@@ -1,5 +1,6 @@
 # Akiroute
 
+[![Website](https://img.shields.io/badge/site-akiromusic.github.io-6D82FF)](https://akiromusic.github.io/AkiRoute/)
 [![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-blue.svg)]()
 [![Framework](https://img.shields.io/badge/Framework-WinUI%203%20%2F%20.NET%2010-purple.svg)]()
