@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en" data-pack="aurora">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AkiRoute — Local proxy routing for Windows</title>
+<meta name="description" content="A local proxy routing tool for Windows — a native WinUI 3 desktop client with a clean, Apple/Google-grade interface, built from scratch on xray-core.">
+<meta property="og:title" content="AkiRoute — Local proxy routing for Windows">
+<meta property="og:description" content="A local proxy routing tool for Windows — a native WinUI 3 desktop client with a clean, Apple/Google-grade interface, built from scratch on xray-core.">
+<meta property="og:url" content="https://akiromusic.github.io/AkiRoute/">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..700&family=IBM+Plex+Mono:wght@400;600&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/palette.css">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="aurora-bg"></div>
+<div class="aurora-sweep"></div>
+<div class="star-field"></div>
+<div class="noise-overlay"></div>
+
+<header class="site-nav material-frosted">
+  <a class="brand" href="#"><span class="star"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0c.9 6.5 4.6 10.2 12 12-7.4 1.8-11.1 5.5-12 12-.9-6.5-4.6-10.2-12-12C7.4 10.2 11.1 6.5 12 0z"/></svg></span>AkiRoute</a>
+  <nav>
+    <a href="#features">Features</a>
+    <a href="#details">Details</a>
+    <a href="https://github.com/AkiroMusic/AkiRoute" class="nav-keep">GitHub ↗</a>
+  </nav>
+</header>
+
+<main class="wrap">
+
+  <section class="hero">
+    <div class="hero-card panel-contrast material-film flow-nebula spring-in">
+      <div class="eyebrow"><span class="star"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0c.9 6.5 4.6 10.2 12 12-7.4 1.8-11.1 5.5-12 12-.9-6.5-4.6-10.2-12-12C7.4 10.2 11.1 6.5 12 0z"/></svg></span>Desktop App · WinUI 3 / .NET 10</div>
+      <h1>Aki<span class="grad-text">Route</span></h1>
+      <p class="tagline">A local proxy routing tool for Windows — a native WinUI 3 desktop client with a clean, Apple/Google-grade interface, built from scratch on xray-core.</p>
+      <div class="badge-row"><span class="badge">License <b>Proprietary</b></span><span class="badge">Platform <b>Windows 10/11</b></span><span class="badge">Framework <b>WinUI 3 · .NET 10</b></span><span class="badge">Engine <b>xray-core</b></span></div>
+      <div class="cta-row">
+          <a class="btn btn-primary" href="https://github.com/AkiroMusic/AkiRoute/releases/latest">Download latest</a>
+          <a class="btn btn-ghost" href="https://github.com/AkiroMusic/AkiRoute">View on GitHub</a>
+          <a class="btn btn-ghost" href="https://github.com/AkiroMusic/AkiRoute">Source code</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="features">
+    <div class="block-head">
+      <div class="eyebrow"><span class="star"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0c.9 6.5 4.6 10.2 12 12-7.4 1.8-11.1 5.5-12 12-.9-6.5-4.6-10.2-12-12C7.4 10.2 11.1 6.5 12 0z"/></svg></span>Features</div>
+      <h2>What it does</h2>
+      <p class="sub">Per-process routing, node management, and real-time traffic monitoring in one native Windows client: import nodes from links or Clash YAML, route each running process to Proxy, Direct, or Block, and watch live traffic charts on a local HTTP/SOCKS5 listener. Everything stays 100% local — no telemetry, no cloud, and credentials at rest are DPAPI-encrypted. A personal learning project by Akiro, released for learning and technical communication only.</p>
+    </div>
+    <div class="feature-grid">
+          <article class="feature-card material-liquid double-bezel spring-in wide" style="animation-delay:80ms"><div class="f-icon">🌐</div><h3>Node management</h3><p>Import nodes from links (vless://, vmess://, ss://, trojan://, hysteria2://, tuic://) or Clash YAML configs, or from subscription URLs with optional auto-update — plus concurrent ping tests, search, and editing.</p></article>
+          <article class="feature-card material-liquid double-bezel spring-in" style="animation-delay:140ms"><div class="f-icon">🔀</div><h3>Per-process routing</h3><p>Route each running process to Proxy, Direct, or Block with case-insensitive matching (e.g. QQ.exe); rules persist across restarts.</p></article>
+          <article class="feature-card material-liquid double-bezel spring-in" style="animation-delay:200ms"><div class="f-icon">⚙️</div><h3>Proxy engine</h3><p>A local HTTP/SOCKS5 listener (default port 3333, auto-migrates on conflict) with Global / Rule / Direct Only / Process Only routing modes and a real-time traffic chart.</p></article>
+          <article class="feature-card material-liquid double-bezel spring-in" style="animation-delay:260ms"><div class="f-icon">🔒</div><h3>100% local privacy</h3><p>No telemetry, no cloud. Credentials at rest are DPAPI-encrypted (Windows CurrentUser scope), the engine config lives in temp only while the proxy runs, and registry proxy settings are never touched.</p></article>
+          <article class="feature-card material-liquid double-bezel spring-in" style="animation-delay:320ms"><div class="f-icon">🛡️</div><h3>Reliability</h3><p>Single-instance guard; engine lifecycle tied to the app — exiting always kills xray.exe and startup cleans up engines orphaned by a previous crash. Toggle debounce and window size/position persistence included.</p></article>
+          <article class="feature-card material-liquid double-bezel spring-in" style="animation-delay:380ms"><div class="f-icon">🔄</div><h3>Subscriptions &amp; diagnostics</h3><p>Subscription feeds auto-update on a configurable interval, replacing stale nodes while manual nodes are never touched. Scheduled latency re-tests, config backup/restore with validation, and a log viewer pairing app logs with live engine output.</p></article>
+          <article class="feature-card material-liquid double-bezel spring-in" style="animation-delay:440ms"><div class="f-icon">🎨</div><h3>Polish</h3><p>System/Dark/Light themes, close-to-tray with quick switch, keyboard focus rings on all custom-styled controls, context menus on node cards, and empty-state hints.</p></article>
+    </div>
+  </section>
+
+  
+
+  <section class="block" id="details">
+    <div class="block-head">
+      <div class="eyebrow"><span class="star"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0c.9 6.5 4.6 10.2 12 12-7.4 1.8-11.1 5.5-12 12-.9-6.5-4.6-10.2-12-12C7.4 10.2 11.1 6.5 12 0z"/></svg></span>Details</div>
+      <h2>Tech stack</h2>
+    </div>
+    <div class="detail-card material-liquid double-bezel"><table class="detail-table"><thead><tr><th>Layer</th><th>Technology</th></tr></thead><tbody><tr><td>UI</td><td>WinUI 3 (Windows App SDK 1.8, self-contained)</td></tr><tr><td>Language</td><td>C# / .NET 10 (self-contained publish; Native AOT pending)</td></tr><tr><td>Engine</td><td>xray-core</td></tr><tr><td>MVVM</td><td>CommunityToolkit.Mvvm 8.4</td></tr><tr><td>Config parsing</td><td>YamlDotNet</td></tr></tbody></table></div>
+  </section>
+
+  <section class="block" id="quick-start">
+    <div class="block-head">
+      <div class="eyebrow"><span class="star"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0c.9 6.5 4.6 10.2 12 12-7.4 1.8-11.1 5.5-12 12-.9-6.5-4.6-10.2-12-12C7.4 10.2 11.1 6.5 12 0z"/></svg></span>Quick Start</div>
+      <h2>Quick start</h2>
+    </div>
+    <div class="qs-grid">
+      <div class="qs-steps material-liquid double-bezel spring-in">
+        <ol><li><b>Import nodes</b> — Nodes page → Import → paste a link, Clash config, or subscription URL.</li><li><b>Start the proxy</b> — click the switch on the top status bar.</li><li><b>Route processes</b> — Processes page → choose Proxy, Direct, or Block for each process.</li></ol>
+      </div>
+      <div class="code-card panel-contrast spring-in" style="animation-delay:80ms">
+        <div class="code-title"><span class="dot"></span>shell — build &amp; run</div>
+        <pre># fetch the xray engine assets (xray.exe, wintun.dll, geoip.dat, geosite.dat)
+powershell -ExecutionPolicy Bypass -File tools/fetch-assets.ps1
+
+# build (x64)
+dotnet build Akiroute/Akiroute.csproj -p:Platform=x64
+
+# run
+./Akiroute/bin/x64/Debug/net10.0-windows10.0.19041.0/Akiroute.exe</pre>
+      </div>
+    </div>
+  </section>
+
+  <div class="block" style="text-align:center"><p class="quote-line">“For learning and communication purposes only.”</p></div>
+
+  <div class="hairline"></div>
+
+  <section class="block i18n-cn" id="中文" lang="zh-CN">
+    <div class="block-head">
+      <div class="eyebrow"><span class="star"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0c.9 6.5 4.6 10.2 12 12-7.4 1.8-11.1 5.5-12 12-.9-6.5-4.6-10.2-12-12C7.4 10.2 11.1 6.5 12 0z"/></svg></span>桌面应用 · WinUI 3 / .NET 10</div>
+      <h2>项目简介</h2>
+      <p class="sub">一个原生 Windows 客户端集进程级分流、节点管理与实时流量监控于一体：从链接或 Clash YAML 导入节点，为每个运行中的进程选择代理/直连/阻止，并在本地 HTTP/SOCKS5 监听端口上查看实时流量图表。所有数据 100% 本地——无遥测、无云端，静态存储的凭据经 DPAPI 加密。这是 Akiro 的个人学习项目，仅供学习与技术交流使用。</p>
+    </div>
+    <div class="feature-grid">
+          <article class="feature-card material-liquid double-bezel spring-in" style="animation-delay:80ms"><div class="f-icon">🌐</div><h3>节点管理</h3><p>从链接（vless://、vmess://、ss://、trojan://、hysteria2://、tuic://）或 Clash YAML 配置导入节点，也可从订阅链接导入（可选自动更新）——并支持并发延迟测试（ping）、搜索与编辑。</p></article>
+          <article class="feature-card material-liquid double-bezel spring-in" style="animation-delay:140ms"><div class="f-icon">🔀</div><h3>进程级路由</h3><p>将每个运行中的进程路由到代理/直连/阻止，进程匹配不区分大小写（例如 QQ.exe）；规则在重启后依然保留。</p></article>
+          <article class="feature-card material-liquid double-bezel spring-in" style="animation-delay:200ms"><div class="f-icon">⚙️</div><h3>代理引擎</h3><p>本地 HTTP/SOCKS5 监听端口（默认 3333，冲突时自动迁移），路由模式：全局 / 规则 / 仅直连 / 仅进程，并配实时流量图表。</p></article>
+          <article class="feature-card material-liquid double-bezel spring-in" style="animation-delay:260ms"><div class="f-icon">🔒</div><h3>100% 本地隐私</h3><p>无遥测、无云端。静态存储的节点凭据使用 DPAPI 加密（Windows CurrentUser 范围）；引擎配置仅在代理运行期间存在于临时目录；绝不改动 Windows 注册表中的代理设置。</p></article>
+          <article class="feature-card material-liquid double-bezel spring-in" style="animation-delay:320ms"><div class="f-icon">🛡️</div><h3>可靠性</h3><p>单实例保护；引擎生命周期与应用绑定——退出始终会结束 xray.exe，启动时清理上次崩溃遗留的引擎进程。另含开关防抖与窗口大小/位置跨重启保留。</p></article>
+          <article class="feature-card material-liquid double-bezel spring-in" style="animation-delay:380ms"><div class="f-icon">🔄</div><h3>订阅与诊断</h3><p>订阅源按可配置间隔自动更新，过期节点被替换，手动导入的节点不受影响。可选的定时自动测速、带校验的配置备份/恢复，以及应用日志与引擎实时输出并排显示的日志查看页。</p></article>
+          <article class="feature-card material-liquid double-bezel spring-in" style="animation-delay:440ms"><div class="f-icon">🎨</div><h3>体验细节</h3><p>System/深色/浅色主题、关闭时最小化到托盘并可快速切换、所有自绘控件带键盘焦点框、节点卡片右键菜单，以及空状态提示。</p></article>
+    </div>
+    <div class="block-head" style="margin-top:var(--space-8)">
+      <div class="eyebrow"><span class="star"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0c.9 6.5 4.6 10.2 12 12-7.4 1.8-11.1 5.5-12 12-.9-6.5-4.6-10.2-12-12C7.4 10.2 11.1 6.5 12 0z"/></svg></span>明细</div>
+      <h2>技术栈</h2>
+    </div>
+    <div class="detail-card material-liquid double-bezel"><table class="detail-table"><thead><tr><th>分层</th><th>技术</th></tr></thead><tbody><tr><td>UI</td><td>WinUI 3（Windows App SDK 1.8，自包含）</td></tr><tr><td>语言</td><td>C# / .NET 10（自包含发布；Native AOT 待支持）</td></tr><tr><td>引擎</td><td>xray-core</td></tr><tr><td>MVVM</td><td>CommunityToolkit.Mvvm 8.4</td></tr><tr><td>配置解析</td><td>YamlDotNet</td></tr></tbody></table></div>
+    <div class="qs-grid" style="margin-top:var(--space-8)">
+      <div class="qs-steps material-liquid double-bezel spring-in">
+        <ol><li><b>导入节点</b> — 节点页 → 导入 → 粘贴链接 / Clash 配置 / 订阅地址。</li><li><b>启动代理</b> — 点击顶部状态栏开关。</li><li><b>进程分流</b> — 进程页 → 为每个进程选择代理/直连/阻止。</li></ol>
+      </div>
+      <div class="code-card panel-contrast spring-in" style="animation-delay:80ms">
+        <div class="code-title"><span class="dot"></span>shell — build &amp; run</div>
+        <pre># fetch the xray engine assets (xray.exe, wintun.dll, geoip.dat, geosite.dat)
+powershell -ExecutionPolicy Bypass -File tools/fetch-assets.ps1
+
+# build (x64)
+dotnet build Akiroute/Akiroute.csproj -p:Platform=x64
+
+# run
+./Akiroute/bin/x64/Debug/net10.0-windows10.0.19041.0/Akiroute.exe</pre>
+      </div>
+    </div>
+  </section>
+
+  <div class="block" style="text-align:center"><p class="quote-line">“仅供学习与交流使用。”</p></div>
+
+  <footer class="site-footer">
+    <div class="footer-row material-liquid">
+      <div>
+        <a class="brand" href="#"><span class="star"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0c.9 6.5 4.6 10.2 12 12-7.4 1.8-11.1 5.5-12 12-.9-6.5-4.6-10.2-12-12C7.4 10.2 11.1 6.5 12 0z"/></svg></span>AkiRoute</a>
+        <p class="footer-meta" style="margin-top:var(--space-3);max-width:340px">A local proxy routing tool for Windows — a native WinUI 3 desktop client with a clean, Apple/Google-grade interface, built from scratch on xray-core.</p>
+      </div>
+      <div class="footer-links">
+        <a href="https://github.com/AkiroMusic/AkiRoute">Source code ↗</a>
+        <a href="https://github.com/AkiroMusic/AkiRoute/releases/latest">Releases ↗</a>
+      </div>
+      <div class="footer-links">
+        <a href="https://akiromusic.com/">akiromusic.com ↗</a>
+        <a href="https://github.com/AkiroMusic">GitHub Profile ↗</a>
+        <a href="https://akiromusic.github.io/AkiroMusic/">All project sites ↗</a>
+      </div>
+    </div>
+    <p class="footer-meta">© 2026 Akiro · Proprietary — non-commercial, educational use only. Built with the Aurora Glass design system.</p>
+  </footer>
+
+</main>
+</body>
+</html>

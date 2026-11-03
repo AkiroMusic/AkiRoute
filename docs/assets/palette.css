@@ -1,0 +1,17 @@
+/* Per-site palette overrides (extracted from app source) */
+:root {
+  --bg-base: #1C1C1E;
+  --surface-1: #242428;
+  --surface-2: #2E2E33;
+  --surface-contrast: #111112;
+  --border: #3A3A40;
+  --text-primary: #F2F2F0;
+  --text-secondary: #9A9AA2;
+  --text-tertiary: #5F5F66;
+  --accent: #E8A33D;
+  --accent-hover: #F0B65C;
+  --accent-secondary: #F2C28F;
+  --grad-a: #B87A2A;
+  --grad-b: #E8A33D;
+  --grad-c: #F2C28F;
+}
