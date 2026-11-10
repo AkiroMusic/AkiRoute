@@ -447,6 +447,9 @@ public sealed class XrayService : IDisposable
             // Crash summaries must reflect THIS run only; drop the previous
             // run's log lines before the new engine starts emitting.
             _recentLogs.Clear();
+            // Subscribe BEFORE Start(): a process that dies within the start
+            // call must still raise Exited and be reaped.
+            process.Exited += OnProcessExited;
         }
         SetState(XrayServiceState.Starting);
 
@@ -468,7 +471,6 @@ public sealed class XrayService : IDisposable
 
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
-        process.Exited += OnProcessExited;
 
         var ready = await ProbeReadinessAsync(process, localPort, cancellationToken).ConfigureAwait(false);
         if (ready && HasExitedSafely(process))
@@ -499,8 +501,11 @@ public sealed class XrayService : IDisposable
                 await WaitForExitQuietlyAsync(process).ConfigureAwait(false);
             }
 
-            // The engine never became ready — drop the credential-bearing config.
+            // The engine never became ready — drop the credential-bearing
+            // config and release the process object (OnProcessExited also
+            // cleans up when its event fires; double-dispose is harmless).
             DeleteConfigTemp();
+            CleanupProcess();
 
             if (cancelled)
             {
@@ -557,10 +562,10 @@ public sealed class XrayService : IDisposable
         }
 
         exited = exited || HasExitedSafely(process);
-        CleanupProcess();
 
         if (exited)
         {
+            CleanupProcess();
             DeleteConfigTemp();
             IsRunning = false;
             LocalPort = 0;
@@ -569,14 +574,30 @@ public sealed class XrayService : IDisposable
         }
         else
         {
-            // The engine exit could not be confirmed — never claim Stopped,
-            // and keep the credential-bearing config (the engine may live on).
+            // The engine exit could not be confirmed — never claim Stopped.
+            // Keep the process reference AND the credential-bearing config:
+            // the engine may still be alive, and a later Stop/Dispose must be
+            // able to retry the kill through the same handle.
             IsRunning = false;
             LastCrashSummary = "xray did not exit after a stop request";
+            AppLogger.Warn($"[XrayService] Stop unconfirmed; engine kept for retry (pid={GetPidSafely(process)})");
             SetState(XrayServiceState.Failed);
         }
 
         return exited;
+    }
+
+    /// <summary>Best-effort PID read for diagnostics; -1 when unavailable.</summary>
+    private static int GetPidSafely(Process process)
+    {
+        try
+        {
+            return process.Id;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)
+        {
+            return -1;
+        }
     }
 
     /// <summary>

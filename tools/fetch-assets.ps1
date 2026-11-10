@@ -10,8 +10,11 @@
 # Idempotent: skips re-download when the zip already exists and its hash matches
 # the digest file.
 param(
-    # Pinned xray-core release tag (e.g. 'v25.8.29'); 'latest' tracks upstream.
-    [string]$XrayVersion = 'latest'
+    # Pinned xray-core release tag. This is the version the app's protocol
+    # mappings were verified against (see XrayConfigValidationTests); bump it
+    # ONLY together with digest verification and an engine validation run.
+    # Pass -XrayVersion latest to explicitly track upstream.
+    [string]$XrayVersion = 'v26.3.27'
 )
 
 $ErrorActionPreference = 'Stop'

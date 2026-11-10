@@ -13,9 +13,11 @@ namespace Akiroute.Services;
 /// </summary>
 internal static class ClashNodeMapper
 {
+    // TUIC is excluded: the bundled engine has no TUIC outbound, so Clash
+    // tuic proxies are skipped at import instead of creating dead nodes.
     private static readonly HashSet<string> SupportedTypes = new(StringComparer.Ordinal)
     {
-        "ss", "vmess", "vless", "trojan", "hysteria2", "tuic",
+        "ss", "vmess", "vless", "trojan", "hysteria2",
     };
 
     /// <summary>
@@ -71,7 +73,6 @@ internal static class ClashNodeMapper
             case "vless": MapVless(map, extra); break;
             case "trojan": MapTrojan(map, extra); break;
             case "hysteria2": MapHysteria2(map, extra); break;
-            case "tuic": MapTuic(map, extra); break;
         }
     }
 
@@ -169,21 +170,6 @@ internal static class ClashNodeMapper
         if (YamlMapReader.TryGetValue(map, "skip-cert-verify", out _))
         {
             extra["insecure"] = JsonValue.Create(YamlMapReader.GetBool(map, "skip-cert-verify"));
-        }
-    }
-
-    private static void MapTuic(YamlMappingNode map, Dictionary<string, JsonNode> extra)
-    {
-        SetString(extra, "uuid", YamlMapReader.GetString(map, "uuid"));
-        SetString(extra, "password", YamlMapReader.GetString(map, "password"));
-        SetString(extra, "congestionControl", YamlMapReader.GetString(map, "congestion-controller"));
-        SetString(extra, "udpRelayMode", YamlMapReader.GetString(map, "udp-relay-mode"));
-
-        if (YamlMapReader.TryGetValue(map, "disable-sni", out var disable) &&
-            disable is YamlScalarNode node &&
-            YamlMapReader.ParseBool(node.Value))
-        {
-            extra["sni"] = JsonValue.Create("");
         }
     }
 

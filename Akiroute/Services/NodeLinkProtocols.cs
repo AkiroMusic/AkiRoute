@@ -5,7 +5,7 @@ using Akiroute.Models;
 namespace Akiroute.Services;
 
 /// <summary>
-/// Protocol-specific link parsers (ss, vmess, vless, trojan, hysteria2, tuic).
+/// Protocol-specific link parsers (ss, vmess, vless, trojan, hysteria2).
 /// Each parser returns null for a malformed link so the caller skips it.
 /// </summary>
 public static partial class NodeLinkParser
@@ -290,38 +290,5 @@ public static partial class NodeLinkParser
         address = hostPort;
         return true;
     }
-
-    /// <summary>
-    /// Parses a tuic:// link "uuid:password@host:port?...". Query params are
-    /// remapped: congestion_control→congestionControl, udp_relay_mode→udpRelayMode,
-    /// allow_insecure→allowInsecure (bool). A missing uuid or host/port is skipped.
-    /// </summary>
-    private static ProxyNode? ParseTuic(string body, string raw)
-    {
-        SplitBody(body, out var authority, out var query, out var fragment);
-        SplitAuthority(authority, out var userInfo, out var hostPort);
-        if (userInfo.Length == 0 || !TryParseHostPort(hostPort, out var address, out var port))
-        {
-            return null;
-        }
-
-        var decodedUser = Uri.UnescapeDataString(userInfo);
-        var colon = decodedUser.IndexOf(':');
-        if (colon <= 0)
-        {
-            return null;
-        }
-
-        var queryParams = ParseQuery(query);
-        var @params = NewParams();
-        AddString(@params, "uuid", decodedUser[..colon]);
-        AddString(@params, "password", decodedUser[(colon + 1)..]);
-        AddString(@params, "congestionControl", GetQuery(queryParams, "congestion_control"));
-        AddString(@params, "alpn", GetQuery(queryParams, "alpn"));
-        AddString(@params, "udpRelayMode", GetQuery(queryParams, "udp_relay_mode"));
-        AddBool(@params, "allowInsecure", GetQuery(queryParams, "allow_insecure"));
-        AddString(@params, "sni", GetQuery(queryParams, "sni"));
-
-        return NewNode("tuic", address, port, ResolveName(fragment, "tuic", address, port), raw, @params);
-    }
 }
+

@@ -464,6 +464,9 @@
   </data>
 
   <!-- Auto-start registry update failure -->
+  <data name="Error.InsecureNotSupported" xml:space="preserve">
+    <value>Imported nodes are configured to skip certificate verification ({0} node(s)). The bundled Xray engine removed that option, so they may fail to connect even with correct credentials.</value>
+  </data>
   <data name="Error.LaunchOnStartupFailed" xml:space="preserve">
     <value>Failed to update the Windows auto-start registration. Details are in the app log.</value>
   </data>

@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.Security.Cryptography;
+using System.Text;
 using Akiroute.Helpers;
 using Akiroute.Models;
 using Akiroute.Services;
@@ -456,7 +458,9 @@ public partial class NodeListViewModel : ObservableObject
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException or IOException)
         {
-            AppLogger.Warn($"subscription update failed url={RedactUrlForLog(entry.Url)} error={ex.Message}");
+            // Exception messages can echo the full request URL — scrub URLs
+            // out of the text before it reaches the plaintext log.
+            AppLogger.Warn($"subscription update failed url={RedactUrlForLog(entry.Url)} error={ScrubUrlsInText(ex.Message)}");
             return string.Format(Loc.Get("Error.SubFetchFailed"), ex.Message);
         }
 
@@ -487,6 +491,7 @@ public partial class NodeListViewModel : ObservableObject
         // critical section short.
         int added;
         int removed;
+        int renamed;
         bool selectionLost;
 
         lock (_nodesGate)
@@ -557,6 +562,7 @@ public partial class NodeListViewModel : ObservableObject
                 added++;
             }
 
+            renamed = nameUpdates.Count;
             foreach (var (owned, name) in nameUpdates)
             {
                 owned.Name = name;
@@ -571,7 +577,9 @@ public partial class NodeListViewModel : ObservableObject
         // unchanged feed is re-fetched after every restart.
         _runOnUiThread(() =>
         {
-            if (added + removed > 0)
+            // Renames also need a filter refresh: a node renamed into or out
+            // of the current search results must appear/disappear immediately.
+            if (added + removed > 0 || renamed > 0)
             {
                 ApplyFilter();
 
@@ -684,16 +692,21 @@ public partial class NodeListViewModel : ObservableObject
     /// </summary>
     private string? AddImported(IEnumerable<ProxyNode> imported, bool raiseWhenUnchanged = false)
     {
+        var nodes = imported as IList<ProxyNode> ?? imported.ToList();
         var added = 0;
         lock (_nodesGate)
         {
+            // Dedupe by CONFIG fingerprint, not bare endpoint: a subscription
+            // node with the same host:port but different credentials as a
+            // manual node is a distinct node and must be imported (the update
+            // path applies the same identity rule).
             var known = new HashSet<string>(
-                _allNodes.Select(static node => NodeKey(node)),
-                StringComparer.OrdinalIgnoreCase);
+                _allNodes.Select(static node => NodeFingerprint(node)),
+                StringComparer.Ordinal);
 
-            foreach (var node in imported)
+            foreach (var node in nodes)
             {
-                if (node is null || !known.Add(NodeKey(node)))
+                if (node is null || !known.Add(NodeFingerprint(node)))
                 {
                     continue;
                 }
@@ -702,6 +715,16 @@ public partial class NodeListViewModel : ObservableObject
                 Settings.Nodes.Add(node);
                 added++;
             }
+        }
+
+        var insecure = CountInsecureNodes(nodes);
+        if (insecure > 0)
+        {
+            // The bundled engine removed certificate-skip support entirely;
+            // such nodes import fine but will likely fail to connect. Surface
+            // it through the existing import-error channel instead of failing
+            // the import.
+            ImportError = string.Format(Loc.Get("Error.InsecureNotSupported"), insecure);
         }
 
         if (added > 0 || raiseWhenUnchanged)
@@ -783,39 +806,71 @@ public partial class NodeListViewModel : ObservableObject
         (node.Name?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
         (node.Address?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false);
 
-    /// <summary>Deduplication key for a node: its type, address, and port.</summary>
-    private static string NodeKey(ProxyNode node) =>
-        $"{node.Type}|{node.Address}|{node.Port}";
-
     /// <summary>
-    /// Config fingerprint for subscription updates: the endpoint plus the
-    /// credential and transport fields that change how the node connects.
-    /// Same endpoint with a rotated password/UUID yields a DIFFERENT fingerprint.
+    /// Config fingerprint for subscription updates: the endpoint plus EVERY
+    /// ExtraParams entry (canonical: keys sorted, JSON-encoded values), hashed
+    /// with SHA-256. Covering the whole parameter dictionary means any field
+    /// the builder consumes (uuid, password, method, tls, alterId, alpn,
+    /// fingerprint, headerType, reality keys, ...) changes the fingerprint —
+    /// a field list maintained by hand would silently drift as protocols grow.
+    /// Display name is deliberately excluded; DNS name comparison is
+    /// case-insensitive; credentials are never case-folded.
     /// </summary>
-    private static string NodeFingerprint(ProxyNode node) =>
-        $"{node.Type}|{node.Address}|{node.Port}"
-        + $"|{Param(node, "uuid")}|{Param(node, "password")}|{Param(node, "method")}"
-        + $"|{Param(node, "flow")}|{Param(node, "security")}|{Param(node, "network")}"
-        + $"|{Param(node, "publicKey")}|{Param(node, "shortId")}|{Param(node, "spiderX")}"
-        + $"|{Param(node, "host")}|{Param(node, "path")}|{Param(node, "serviceName")}"
-        + $"|{Param(node, "obfs")}|{Param(node, "obfsPassword")}|{Param(node, "sni")}";
+    private static string NodeFingerprint(ProxyNode node)
+    {
+        var pairs = new List<string>();
+        if (node.ExtraParams is not null)
+        {
+            foreach (var pair in node.ExtraParams)
+            {
+                pairs.Add(pair.Key + "=" + (pair.Value?.ToJsonString() ?? "null"));
+            }
+        }
+        pairs.Sort(StringComparer.Ordinal);
 
-    /// <summary>Reads an ExtraParams entry as plain text; empty when absent.</summary>
-    private static string Param(ProxyNode node, string key)
+        var payload = $"{node.Type}|{node.Address?.ToLowerInvariant()}|{node.Port}|{string.Join("|", pairs)}";
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)));
+    }
+
+    /// <summary>True when an ExtraParams entry carries a truthy insecure flag.</summary>
+    private static bool IsTruthyParam(ProxyNode node, string key)
     {
         if (node.ExtraParams?.TryGetValue(key, out var value) != true || value is null)
         {
+            return false;
+        }
+        return value is System.Text.Json.Nodes.JsonValue jsonValue
+            && (jsonValue.TryGetValue<bool>(out var flag) && flag
+                || jsonValue.TryGetValue<string>(out var text) && text is "1" or "true");
+    }
+
+    /// <summary>Count of imported nodes requesting skipped certificate verification.</summary>
+    private static int CountInsecureNodes(IEnumerable<ProxyNode> nodes) =>
+        nodes.Count(n => IsTruthyParam(n, "allowInsecure") || IsTruthyParam(n, "insecure"));
+
+    /// <summary>
+    /// Replaces every http(s) URL inside a free-form diagnostic text with its
+    /// redacted form, so exception messages cannot leak tokens that
+    /// <see cref="RedactUrlForLog"/> already stripped elsewhere.
+    /// </summary>
+    internal static string ScrubUrlsInText(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
             return string.Empty;
         }
-        return value is System.Text.Json.Nodes.JsonValue jsonValue && jsonValue.TryGetValue<string>(out var text)
-            ? text
-            : value.ToJsonString();
+        return System.Text.RegularExpressions.Regex.Replace(
+            text,
+            "https?://[^\\s\"']+",
+            match => RedactUrlForLog(match.Value),
+            System.Text.RegularExpressions.RegexOptions.CultureInvariant);
     }
 
     /// <summary>
-    /// Renders a subscription URL for logs: scheme, host, port, and path are
-    /// kept for diagnostics; query values (tokens) and the fragment are
-    /// dropped, query keys are kept.
+    /// Renders a subscription URL for logs: scheme, host, and port are kept
+    /// for diagnostics. The path segment is dropped entirely — some providers
+    /// put the access token in the path (e.g. /sub/&lt;token&gt;) — as are
+    /// query values and the fragment; query keys survive.
     /// </summary>
     internal static string RedactUrlForLog(string? url)
     {
@@ -836,7 +891,8 @@ public partial class NodeListViewModel : ObservableObject
         {
             builder.Append(':').Append(uri.Port);
         }
-        builder.Append(uri.AbsolutePath);
+        // The path is NOT appended: providers hide subscription tokens in
+        // path segments (e.g. /sub/<token>).
 
         if (uri.Query.Length > 1)
         {

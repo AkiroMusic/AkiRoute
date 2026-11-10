@@ -464,6 +464,9 @@
   </data>
 
   <!-- Auto-start registry update failure -->
+  <data name="Error.InsecureNotSupported" xml:space="preserve">
+    <value>有 {0} 个节点配置了跳过证书验证。内置的 Xray 引擎已移除该选项，这些节点即使凭据正确也可能无法连接。</value>
+  </data>
   <data name="Error.LaunchOnStartupFailed" xml:space="preserve">
     <value>更新开机自启注册表项失败，详情请查看应用日志。</value>
   </data>

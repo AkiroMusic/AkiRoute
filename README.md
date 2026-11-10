@@ -42,7 +42,10 @@
   - Engine: bundled [xray-core](https://github.com/XTLS/Xray-core). Supported
     outbounds: VLESS / VMess / Shadowsocks / Trojan / Hysteria2 (via the
     engine's `hysteria` outbound, version 2). TUIC is **not** supported by the
-    bundled engine and is rejected at config build
+    bundled engine and is rejected at import. Certificate-skip flags
+    (`allowInsecure` / `skip-cert-verify` / `insecure`) are not supported by
+    the engine either — nodes requesting them import with a warning and may
+    fail to connect
 - **Privacy & Polish**
   - **100% local** — no telemetry, no cloud, all data stays on your machine
   - Credentials at rest are DPAPI-encrypted (Windows CurrentUser scope) — the
@@ -270,7 +273,9 @@ risk and responsibility.
   - 实时流量图表
   - 引擎：内置 [xray-core](https://github.com/XTLS/Xray-core)。支持的出站协议：
     VLESS / VMess / Shadowsocks / Trojan / Hysteria2（经由引擎的 `hysteria`
-    出站，version 2）。TUIC **不被**内置引擎支持，构建配置时会被拒绝
+    出站，version 2）。TUIC **不被**内置引擎支持，导入时即被拒绝。跳过证书验证的
+    选项（`allowInsecure` / `skip-cert-verify` / `insecure`）同样不被引擎支持——
+    相关节点导入时会提示警告，且可能无法连接
 - **隐私与体验**
   - **100% 本地** —— 无遥测、无云端，所有数据都保留在您的设备上
   - 静态存储的节点凭据使用 DPAPI 加密（Windows CurrentUser 范围）—— 配置文件

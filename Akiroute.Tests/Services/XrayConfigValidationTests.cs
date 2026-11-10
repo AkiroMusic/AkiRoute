@@ -6,16 +6,46 @@ using Akiroute.Services;
 namespace Akiroute.Tests.Services;
 
 /// <summary>
-/// Engine-driven config validation: every protocol the app claims to support
-/// is built via <see cref="XrayConfigBuilder"/> and fed to the REAL bundled
-/// engine with <c>xray run -test</c>. JSON-shape assertions alone cannot prove
-/// the engine accepts a config — protocol names and schema drift are only
-/// caught here (this is how the ss→shadowsocks and hysteria2→hysteria
-/// mappings were verified).
+/// A [Fact] that SKIPS (visibly, in the runner result) when the bundled xray
+/// engine asset is absent — the canonical xUnit 2.x conditional-skip pattern.
+/// CI downloads the pinned engine before running tests, so a Skip there means
+/// the setup step failed and is visible as a non-passing result.
+/// </summary>
+public sealed class EngineFactAttribute : FactAttribute
+{
+    public EngineFactAttribute()
+    {
+        if (XrayConfigValidationTests.ResolvedEngine is null)
+        {
+            Skip = "bundled xray.exe not available — run tools/fetch-assets.ps1";
+        }
+    }
+}
+
+/// <summary>The [Theory] counterpart of <see cref="EngineFactAttribute"/>.</summary>
+public sealed class EngineTheoryAttribute : TheoryAttribute
+{
+    public EngineTheoryAttribute()
+    {
+        if (XrayConfigValidationTests.ResolvedEngine is null)
+        {
+            Skip = "bundled xray.exe not available — run tools/fetch-assets.ps1";
+        }
+    }
+}
+
+/// <summary>
+/// Engine-driven config validation: every protocol and key transport variant
+/// the app claims to support is built via <see cref="XrayConfigBuilder"/> and
+/// fed to the REAL bundled engine with <c>xray run -test</c>. JSON-shape
+/// assertions alone cannot prove the engine accepts a config — protocol names
+/// and schema drift are only caught here (this is how the ss→shadowsocks and
+/// hysteria2→hysteria mappings were verified).
 ///
-/// Gated on the source-tree engine asset (run tools/fetch-assets.ps1 first);
-/// without it the suite reports the coverage gap loudly instead of silently
-/// passing.
+/// The engine asset is gitignored; CI downloads the pinned version via
+/// tools/fetch-assets.ps1 BEFORE running tests, so a missing engine means the
+/// setup itself failed and the test SKIPS loudly (Assert.Skip — a visible
+/// skipped result, never a fake pass).
 /// </summary>
 public class XrayConfigValidationTests
 {
@@ -26,55 +56,47 @@ public class XrayConfigValidationTests
             ? Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Akiroute", "Assets", "engine", "xray.exe")
             : null;
 
-    private static string? ResolvedEngine =>
+    internal static string? ResolvedEngine =>
         SourceXrayExe is not null && File.Exists(SourceXrayExe) ? Path.GetFullPath(SourceXrayExe) : null;
 
-    [Fact]
-    public void SupportedProtocols_PassRealEngineValidation()
+    public static IEnumerable<object[]> ProtocolMatrix()
     {
-        var engine = ResolvedEngine;
-        if (engine is null)
-        {
-            // Engine integration coverage NOT RUN: the bundled xray.exe is
-            // missing (tools/fetch-assets.ps1). Reported loudly so a vacuous
-            // green suite cannot hide the gap.
-            Console.WriteLine("[SKIP] XrayConfigValidationTests: bundled xray.exe not available — engine config validation is NOT running.");
-            return;
-        }
-
-        var configs = new Dictionary<string, JsonObject>
-        {
-            ["vless"] = BuildFor(VlessNode()),
-            ["vmess"] = BuildFor(VmessNode()),
-            ["ss"] = BuildFor(SsNode()),
-            ["trojan"] = BuildFor(TrojanNode()),
-            ["hysteria2"] = BuildFor(Hysteria2Node()),
-        };
-
-        var failures = new List<string>();
-        foreach (var (protocol, config) in configs)
-        {
-            var path = Path.Combine(Path.GetTempPath(), $"akiroute-validate-{protocol}-{Guid.NewGuid():N}.json");
-            File.WriteAllText(path, config.ToJsonString());
-            try
-            {
-                var (exitCode, output) = RunEngineTest(engine, path);
-                if (exitCode != 0)
-                {
-                    failures.Add($"{protocol}: exit {exitCode}: {FirstErrorLine(output)}");
-                }
-            }
-            finally
-            {
-                File.Delete(path);
-            }
-        }
-
-        Assert.True(failures.Count == 0,
-            "protocols rejected by the bundled engine:\n" + string.Join("\n", failures));
+        yield return new object[] { "vless-tls", VlessNode() };
+        yield return new object[] { "vless-reality", WithParams(VlessNode(), ("security", "reality"), ("publicKey", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"), ("shortId", "ab12"), ("spiderX", "/sp")) };
+        yield return new object[] { "vless-ws", WithParams(VlessNode(), ("network", "ws"), ("host", "cdn.example.com"), ("path", "/ws")) };
+        yield return new object[] { "vless-grpc", WithParams(VlessNode(), ("network", "grpc"), ("serviceName", "svc")) };
+        yield return new object[] { "vmess-tls", VmessNode() };
+        yield return new object[] { "vmess-clash-tls-bool", WithParams(VmessNode(), ("security", "auto"), ("tls", "true"), ("sni", "example.com"), ("fingerprint", "chrome"), ("alpn", "h2,h3")) };
+        yield return new object[] { "vmess-ws", WithParams(VmessNode(), ("network", "ws"), ("host", "cdn.example.com"), ("path", "/ws")) };
+        yield return new object[] { "ss", SsNode() };
+        yield return new object[] { "trojan-ws", WithParams(TrojanNode(), ("network", "ws"), ("host", "cdn.example.com"), ("path", "/ws")) };
+        yield return new object[] { "trojan-grpc", WithParams(TrojanNode(), ("network", "grpc"), ("serviceName", "svc")) };
+        yield return new object[] { "hysteria2", Hysteria2Node() };
+        yield return new object[] { "hysteria2-obfs-alpn", WithParams(Hysteria2Node(), ("obfs", "salamander"), ("obfsPassword", "obfspw"), ("alpn", "h3")) };
     }
 
-    [Fact]
+    [EngineTheory]
+    [MemberData(nameof(ProtocolMatrix))]
+    public async Task ProtocolVariants_PassRealEngineValidation(string label, ProxyNode node)
+    {
+        var engine = ResolvedEngine!;
+        var path = Path.Combine(Path.GetTempPath(), $"akiroute-validate-{label}-{Guid.NewGuid():N}.json");
+        File.WriteAllText(path, XrayConfigBuilder.Build(node, Array.Empty<ProcessRule>(), 3333, ProxyMode.Global).ToJsonString());
+        try
+        {
+            var (exitCode, output) = await RunEngineTestAsync(engine!, path);
+            if (exitCode != 0)
+            {
+                Assert.Fail($"{label} rejected by the bundled engine (exit {exitCode}): {FirstErrorLine(output)}");
+            }
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [EngineFact]
     public void TuicNode_IsRejectedByBuilder()
     {
         // TUIC has no outbound in the bundled engine; the builder must fail
@@ -86,6 +108,16 @@ public class XrayConfigValidationTests
 
     private static JsonObject BuildFor(ProxyNode node) =>
         XrayConfigBuilder.Build(node, Array.Empty<ProcessRule>(), 3333, ProxyMode.Global);
+
+    private static ProxyNode WithParams(ProxyNode node, params (string Key, string Value)[] pairs)
+    {
+        foreach (var (key, value) in pairs)
+        {
+            node.ExtraParams ??= new Dictionary<string, JsonNode>(StringComparer.Ordinal);
+            node.ExtraParams[key] = System.Text.Json.Nodes.JsonValue.Create(value);
+        }
+        return node;
+    }
 
     private static ProxyNode VlessNode() => new()
     {
@@ -145,7 +177,14 @@ public class XrayConfigValidationTests
         return dict;
     }
 
-    private static (int ExitCode, string Output) RunEngineTest(string engine, string configPath)
+    /// <summary>
+    /// Runs the engine with <c>run -test</c>. Both streams are drained
+    /// CONCURRENTLY (sequential ReadToEnd calls can deadlock when the child
+    /// fills the stderr pipe while the parent blocks on stdout), the wait is
+    /// bounded, and a hung engine is killed — a timeout is a FAILED
+    /// validation, never a pass.
+    /// </summary>
+    private static async Task<(int ExitCode, string Output)> RunEngineTestAsync(string engine, string configPath)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -161,8 +200,28 @@ public class XrayConfigValidationTests
         startInfo.ArgumentList.Add(configPath);
 
         using var process = Process.Start(startInfo)!;
-        var output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
-        process.WaitForExit(15000);
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+
+        var waitTask = process.WaitForExitAsync(CancellationToken.None);
+        var completed = await Task.WhenAny(waitTask, Task.Delay(TimeSpan.FromSeconds(20))).ConfigureAwait(false);
+
+        if (completed != waitTask)
+        {
+            // Engine hung past the validation timeout: kill the tree and fail.
+            try
+            {
+                process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException)
+            {
+            }
+
+            Assert.Fail($"xray run -test timed out after 20 s for config {Path.GetFileName(configPath)}");
+        }
+
+        var output = (await stdoutTask.ConfigureAwait(false)) + (await stderrTask.ConfigureAwait(false));
         return (process.ExitCode, output);
     }
 

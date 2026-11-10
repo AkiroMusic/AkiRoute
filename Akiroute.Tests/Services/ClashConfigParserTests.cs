@@ -102,9 +102,11 @@ public class ClashConfigParserTests
         // Act.
         var nodes = ClashConfigParser.Parse(yaml);
 
-        // Assert: all six supported nodes are present with distinct ids.
-        Assert.Equal(6, nodes.Count);
-        Assert.Equal(6, nodes.Select(n => n.Id).Distinct().Count());
+        // Assert: five supported nodes are present with distinct ids — the
+        // tuic proxy is skipped (no TUIC outbound in the bundled engine).
+        Assert.Equal(5, nodes.Count);
+        Assert.Equal(5, nodes.Select(n => n.Id).Distinct().Count());
+        Assert.DoesNotContain(nodes, static n => n.Type == "tuic");
         Assert.All(nodes, n => Assert.Matches("^[0-9a-fA-F]{32}$", n.Id));
 
         // ss: cipher -> method, password, udp.
@@ -167,14 +169,6 @@ public class ClashConfigParserTests
         Assert.True(Bool(hy2, "insecure"));
         Assert.False(hy2.ExtraParams!.ContainsKey("allowInsecure"));
 
-        // tuic: transport tuning fields.
-        var tuic = ByName(nodes, "Tuic-1");
-        Assert.Equal("tuic", tuic.Type);
-        Assert.Equal("33333333-3333-3333-3333-333333333333", Str(tuic, "uuid"));
-        Assert.Equal("tuic-password", Str(tuic, "password"));
-        Assert.Equal("bbr", Str(tuic, "congestionControl"));
-        Assert.Equal("native", Str(tuic, "udpRelayMode"));
-        Assert.Equal("h3", Str(tuic, "alpn"));
     }
 
     [Fact]

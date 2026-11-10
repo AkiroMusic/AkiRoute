@@ -40,9 +40,9 @@ public static partial class NodeLinkParser
     /// <summary>
     /// Cheap shape check modeled on HexagonProxy's <c>_is_plausible_share_uri</c>:
     /// rejects tokens that cannot be a share link before the full parse runs.
-    /// vless/trojan/tuic need userinfo@host:port, hysteria2 allows auth-less
-    /// host:port, vmess needs a base64 payload, and ss needs '@' (or a base64
-    /// payload that decodes to one).
+    /// vless/trojan need userinfo@host:port, hysteria2 allows auth-less
+    /// host:port (short hosts included), vmess needs a base64 payload, and ss
+    /// needs '@' (or a base64 payload that decodes to one).
     /// </summary>
     private static bool IsPlausibleLink(string token)
     {
@@ -54,17 +54,16 @@ public static partial class NodeLinkParser
 
         var scheme = token[..schemeEnd].ToLowerInvariant();
         var payload = token[(schemeEnd + 3)..].Trim();
-        if (payload.Length < 8)
-        {
-            return false;
-        }
 
         switch (scheme)
         {
             case "vless":
             case "trojan":
-            case "tuic":
                 // Authority must carry non-empty userinfo@host:port ("[::1]:443" included).
+                if (payload.Length < 8)
+                {
+                    return false;
+                }
                 SplitBody(payload, out var authority, out _, out _);
                 var at = authority.LastIndexOf('@');
                 return at > 0
@@ -73,17 +72,26 @@ public static partial class NodeLinkParser
             case "hysteria2":
             case "hy2":
                 // Auth and port are both optional: "auth@host:port",
-                // "auth@host", "host:port", and bare "host" all parse. The
-                // full parser validates the host and defaults the port to 443.
+                // "auth@host", "host:port", and bare "host" — even a short
+                // domain like "a.io" — all parse. The full parser validates
+                // the host and defaults the port to 443.
                 SplitBody(payload, out var hyAuthority, out _, out _);
                 return hyAuthority.Length > 0;
             case "vmess":
+                if (payload.Length < 8)
+                {
+                    return false;
+                }
                 var hash = payload.IndexOf('#');
                 var vmessPayload = hash < 0 ? payload : payload[..hash];
                 return IsBase64Alphabet(vmessPayload);
             case "ss":
                 // SIP002 userinfo@host:port, or a legacy base64 payload that
                 // decodes to "method:password@host:port".
+                if (payload.Length < 8)
+                {
+                    return false;
+                }
                 SplitBody(payload, out var ssAuthority, out _, out _);
                 return ssAuthority.Contains('@')
                     || (IsBase64Alphabet(ssAuthority) && TryDecodeBase64(ssAuthority)?.Contains('@') is true);
@@ -185,7 +193,9 @@ public static partial class NodeLinkParser
             "vless" => ParseVless(body, token),
             "trojan" => ParseTrojan(body, token),
             "hysteria2" or "hy2" => ParseHysteria2(body, token),
-            "tuic" => ParseTuic(body, token),
+            // "tuic" intentionally absent: the bundled engine has no TUIC
+            // outbound, so importing tuic:// links would create nodes that can
+            // never connect. Rejected at import time, not at start time.
             _ => null,
         };
     }

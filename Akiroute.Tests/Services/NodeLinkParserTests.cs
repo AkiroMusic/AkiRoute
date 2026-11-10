@@ -199,29 +199,25 @@ public class NodeLinkParserTests
     }
 
     [Fact]
-    public void Parse_TuicLink_SetsTypeAddressPortNameAndParams()
+    public void Parse_TuicLink_IsRejectedAtImport()
     {
-        // Arrange: a tuic link with UUID:password userinfo and bool allow_insecure.
-        var raw =
-            $"tuic://{Uuid}:tupass@example.com:7777?congestion_control=bbr&alpn=h3" +
-            "&udp_relay_mode=native&allow_insecure=1&sni=example.com#TUIC%20Node";
-
-        // Act: parse the single link.
-        var node = Single(raw);
-
-        // Assert: core fields plus remapped tuic params.
-        Assert.Equal("tuic", node.Type);
-        Assert.Equal("example.com", node.Address);
-        Assert.Equal(7777, node.Port);
-        Assert.Equal("TUIC Node", node.Name);
-        Assert.Equal(Uuid, GetStringParam(node, "uuid"));
-        Assert.Equal("tupass", GetStringParam(node, "password"));
-        Assert.Equal("bbr", GetStringParam(node, "congestionControl"));
-        Assert.Equal("h3", GetStringParam(node, "alpn"));
-        Assert.Equal("native", GetStringParam(node, "udpRelayMode"));
-        Assert.Equal(true, GetBoolParam(node, "allowInsecure"));
-        Assert.Equal("example.com", GetStringParam(node, "sni"));
+        // TUIC has no outbound in the bundled engine; tuic:// links are
+        // rejected at import instead of creating nodes that can never connect.
+        Assert.Empty(NodeLinkParser.Parse("tuic://uuid:pass@example.com:443?sni=example.com#T"));
     }
+
+    [Fact]
+    public void Parse_Hysteria2Link_ShortHostOnly_Parses()
+    {
+        // Bare short host with no auth and no port — plausibility must not
+        // reject it before the full parser runs.
+        var node = Single("hy2://a.io");
+
+        Assert.Equal("hysteria2", node.Type);
+        Assert.Equal("a.io", node.Address);
+        Assert.Equal(443, node.Port);
+    }
+
 
     [Fact]
     public void Parse_Hysteria2Link_AuthOptional_ParsesWithoutPassword()
@@ -292,7 +288,7 @@ public class NodeLinkParserTests
             "ss://!!!bad!!!\n" +
             $"vmess://{VmessPayload}\n" +
             "trojan://@bad:443\n" +
-            $"tuic://{Uuid}:tupass@example.com:7777#Node%20C\n" +
+            "hysteria2://hy2pass@example.org:8443#Node%20C\n" +
             "not a link";
 
         // Act: parse the whole payload.
@@ -304,7 +300,8 @@ public class NodeLinkParserTests
         Assert.Equal("Node A", nodes[0].Name);
         Assert.Equal("vmess", nodes[1].Type);
         Assert.Equal("VMess Node", nodes[1].Name);
-        Assert.Equal("tuic", nodes[2].Type);
+        // tuic:// is rejected at import now; the third valid link is hy2.
+        Assert.Equal("hysteria2", nodes[2].Type);
         Assert.Equal("Node C", nodes[2].Name);
     }
 

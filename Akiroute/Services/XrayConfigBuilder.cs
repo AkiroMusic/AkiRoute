@@ -341,8 +341,16 @@ public static class XrayConfigBuilder
 
         if (isTls)
         {
+            // Mirror the shared TLS builder: explicit sni preferred over the
+            // transport host, plus client fingerprint and ALPN (all saved by
+            // the Clash mapper for vmess nodes too).
             var tls = new JsonObject();
-            AddString(tls, "serverName", Str(p, "host"));
+            AddString(tls, "serverName", Str(p, "sni") ?? Str(p, "host"));
+            AddString(tls, "fingerprint", Str(p, "fingerprint"));
+            if (GetAlpn(p) is { } alpn)
+            {
+                tls["alpn"] = alpn;
+            }
             stream["tlsSettings"] = tls;
         }
 

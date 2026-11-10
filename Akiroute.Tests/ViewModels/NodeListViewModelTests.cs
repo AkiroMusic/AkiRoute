@@ -673,16 +673,101 @@ public class NodeListViewModelTests
     }
 
     [Fact]
-    public void RedactUrlForLog_DropsQueryValuesAndFragment()
+    public void RedactUrlForLog_DropsPathQueryAndFragment()
     {
+        // The path is dropped entirely: providers hide subscription tokens in
+        // path segments (e.g. /sub/<token>) as often as in the query. Query
+        // KEYS survive (a key name carries no secret), values do not.
         Assert.Equal(
-            "https://sub.example.com/path?token=…&key=…",
-            NodeListViewModel.RedactUrlForLog("https://user:secret@sub.example.com/path?token=TOPSECRET&key=abc#frag"));
+            "https://sub.example.com?token=…",
+            NodeListViewModel.RedactUrlForLog("https://user:secret@sub.example.com/sub/TOPSECRET?token=abc#frag"));
         // Non-HTTP schemes and garbage never leak the input.
         Assert.Equal("[unparsed-url]", NodeListViewModel.RedactUrlForLog("ftp://x/y?token=1"));
         Assert.Equal("[unparsed-url]", NodeListViewModel.RedactUrlForLog("not a url"));
         Assert.Equal("[no-url]", NodeListViewModel.RedactUrlForLog(null));
         Assert.Equal("[no-url]", NodeListViewModel.RedactUrlForLog("  "));
+    }
+
+    [Fact]
+    public void ScrubUrlsInText_RedactsEveryUrlInTheText()
+    {
+        var scrubbed = NodeListViewModel.ScrubUrlsInText(
+            "fetch failed for https://p.example.com/sub/SECRET?token=1 (retry 1) and http://q.io/x#f");
+        Assert.DoesNotContain("SECRET", scrubbed);
+        Assert.DoesNotContain("token=1", scrubbed);
+        Assert.DoesNotContain("/x", scrubbed);
+        Assert.Contains("https://p.example.com", scrubbed);
+    }
+
+    [Fact]
+    public async Task UpdateSubscriptionAsync_RenameOnly_RefreshesSearchFilter()
+    {
+        var settings = new AppSettings();
+        var vm = NewViewModel(settings);
+
+        vm.SubscriptionFetchOverrideForTests = (_, _) => Task.FromResult(S1Link);
+        await vm.ImportSubscriptionAsync("https://feed.example.com/sub");
+        var entry = Assert.Single(settings.Subscriptions);
+
+        // Search for the NEW name first: the node does not match yet.
+        vm.SearchText = "Renamed";
+        Assert.Empty(vm.Nodes);
+
+        vm.SubscriptionFetchOverrideForTests = (_, _) =>
+            Task.FromResult($"ss://{SsUserInfo}@example.com:8388#Renamed");
+        await vm.UpdateSubscriptionAsync(entry);
+
+        // The renamed node must appear in the active search results.
+        var visible = Assert.Single(vm.Nodes);
+        Assert.Equal("Renamed", visible.Name);
+    }
+
+    [Fact]
+    public async Task NodeFingerprint_NameOnlyChange_DoesNotChangeFingerprint()    {
+        // Reflection-free check via behavior: a renamed node with identical
+        // config must be treated as the same node by the update path. The
+        // fingerprint itself is internal, so verify via the import dedup:
+        // importing the same config twice (different names) yields ONE node.
+        var settings = new AppSettings();
+        var vm = NewViewModel(settings);
+        vm.SubscriptionFetchOverrideForTests = (_, _) =>
+            Task.FromResult($"ss://{SsUserInfo}@example.com:8388#First");
+        await vm.ImportSubscriptionAsync("https://feed.example.com/sub");
+
+        vm.SubscriptionFetchOverrideForTests = (_, _) =>
+            Task.FromResult($"ss://{SsUserInfo}@example.com:8388#Second");
+        await vm.ImportSubscriptionAsync("https://feed.example.com/sub");
+
+        var node = Assert.Single(settings.Nodes);
+        Assert.Equal("First", node.Name);
+    }
+
+    [Fact]
+    public async Task ImportSubscriptionAsync_SameEndpointDifferentCredentials_BothImported()
+    {
+        // A subscription node sharing a manual node's endpoint but carrying
+        // different credentials is a DISTINCT config and must coexist.
+        var settings = new AppSettings();
+        var vm = NewViewModel(settings);
+        vm.AddNode(new ProxyNode
+        {
+            Name = "Manual",
+            Address = "example.com",
+            Port = 8388,
+            Type = "ss",
+            ExtraParams = new Dictionary<string, System.Text.Json.Nodes.JsonNode>
+            {
+                ["method"] = System.Text.Json.Nodes.JsonValue.Create("aes-256-gcm")!,
+                ["password"] = System.Text.Json.Nodes.JsonValue.Create("manual-pass")!,
+            },
+        });
+
+        vm.SubscriptionFetchOverrideForTests = (_, _) => Task.FromResult(S1Link);
+        await vm.ImportSubscriptionAsync("https://feed.example.com/sub");
+
+        Assert.Equal(2, settings.Nodes.Count);
+        Assert.Contains(settings.Nodes, n => ReferenceEquals(n, settings.Nodes[0]) && n.SourceSubscriptionId is null);
+        Assert.Contains(settings.Nodes, n => n.SourceSubscriptionId is not null);
     }
 
     [Fact]

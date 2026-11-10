@@ -16,6 +16,9 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Fetch xray engine (pinned, digest-verified)
+        run: powershell -ExecutionPolicy Bypass -File tools/fetch-assets.ps1 -XrayVersion v26.3.27
+
       - name: Build main app
         run: dotnet build Akiroute/Akiroute.csproj -c Release
 
