@@ -66,14 +66,21 @@ $map = @{
     'geoip.dat'   = $rules
     'geosite.dat' = $rules
 }
+$missing = @()
 foreach ($name in $map.Keys) {
     $srcFile = Join-Path $extract $name
     if (Test-Path $srcFile) {
         Copy-Item $srcFile (Join-Path $map[$name] $name) -Force
         Write-Host ("OK  " + (Join-Path $map[$name] $name) + "  " + (Get-Item $srcFile).Length + " bytes")
     } else {
-        Write-Warning "Asset not found in archive: $name"
+        $missing += $name
     }
+}
+
+# A build without a required asset produces a broken app; fail loudly.
+if ($missing.Count -gt 0) {
+    Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
+    throw ("Required asset(s) missing from the archive: " + ($missing -join ', '))
 }
 
 # Cleanup extraction dir (keep the zip + digest for idempotent re-runs)

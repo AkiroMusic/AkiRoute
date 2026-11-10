@@ -27,7 +27,7 @@
 
 - **Node Management**
   - Import nodes from links (`vless://`, `vmess://`, `ss://`, `trojan://`,
-    `hysteria2://`, `tuic://`) or **Clash YAML** configs
+    `hysteria2://`) or **Clash YAML** configs
   - Import from subscription URLs (with optional auto-update)
   - Concurrent latency testing (ping) with per-node results
   - Node search and edit
@@ -39,6 +39,10 @@
   - Local HTTP/SOCKS5 listener (default port `3333`, auto-migrates on conflict)
   - Routing modes: Global / Rule / Direct Only / Process Only
   - Real-time traffic chart
+  - Engine: bundled [xray-core](https://github.com/XTLS/Xray-core). Supported
+    outbounds: VLESS / VMess / Shadowsocks / Trojan / Hysteria2 (via the
+    engine's `hysteria` outbound, version 2). TUIC is **not** supported by the
+    bundled engine and is rejected at config build
 - **Privacy & Polish**
   - **100% local** — no telemetry, no cloud, all data stays on your machine
   - Credentials at rest are DPAPI-encrypted (Windows CurrentUser scope) — the
@@ -252,7 +256,7 @@ risk and responsibility.
 
 - **节点管理**
   - 支持从链接（`vless://`、`vmess://`、`ss://`、`trojan://`、
-    `hysteria2://`、`tuic://`）或 **Clash YAML** 配置导入节点
+    `hysteria2://`）或 **Clash YAML** 配置导入节点
   - 支持从订阅链接导入（可选自动更新）
   - 并发延迟测试（ping），显示每个节点的测试结果
   - 节点搜索与编辑
@@ -264,6 +268,9 @@ risk and responsibility.
   - 本地 HTTP/SOCKS5 监听端口（默认 `3333`，冲突时自动迁移）
   - 路由模式：全局 / 规则 / 仅直连 / 仅进程
   - 实时流量图表
+  - 引擎：内置 [xray-core](https://github.com/XTLS/Xray-core)。支持的出站协议：
+    VLESS / VMess / Shadowsocks / Trojan / Hysteria2（经由引擎的 `hysteria`
+    出站，version 2）。TUIC **不被**内置引擎支持，构建配置时会被拒绝
 - **隐私与体验**
   - **100% 本地** —— 无遥测、无云端，所有数据都保留在您的设备上
   - 静态存储的节点凭据使用 DPAPI 加密（Windows CurrentUser 范围）—— 配置文件

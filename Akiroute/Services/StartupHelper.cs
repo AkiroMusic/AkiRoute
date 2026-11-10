@@ -58,7 +58,7 @@ public static class StartupHelper
                     return false;
                 }
 
-                key.SetValue(AppName, exePath);
+                key.SetValue(AppName, $"\"{exePath}\"");
             }
             else
             {
@@ -84,7 +84,8 @@ public static class StartupHelper
         {
             using var root = Root;
             using var key = root.OpenSubKey(RunKey);
-            return key?.GetValue(AppName) as string;
+            // The value is a quoted command line; compare bare paths.
+            return (key?.GetValue(AppName) as string)?.Trim('"');
         }
         catch (Exception ex)
         {

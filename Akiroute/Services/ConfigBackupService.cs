@@ -94,7 +94,12 @@ public static class ConfigBackupService
 
         try
         {
-            return JsonSerializer.Deserialize(json, AppJsonSerializerContext.Default.AppSettings);
+            var settings = JsonSerializer.Deserialize(json, AppJsonSerializerContext.Default.AppSettings);
+            // Semantic normalization before the caller persists anything: a
+            // syntactically valid file with explicit nulls must not be able
+            // to corrupt the live settings.
+            settings?.Normalize();
+            return settings;
         }
         catch (JsonException ex)
         {

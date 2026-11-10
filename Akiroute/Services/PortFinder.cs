@@ -54,7 +54,7 @@ public static class PortFinder
             maxAttempts = 1;
         }
 
-        if (preferredPort is < 1 or > 65535 || preferredPort + maxAttempts - 1 > 65535)
+        if (preferredPort is < 1 or > 65535)
         {
             return 0;
         }
@@ -64,7 +64,7 @@ public static class PortFinder
             return preferredPort;
         }
 
-        var lastCandidate = preferredPort + maxAttempts - 1;
+        var lastCandidate = Math.Min(preferredPort + maxAttempts - 1, 65535);
         for (var port = preferredPort + 1; port <= lastCandidate; port++)
         {
             if (IsPortAvailable(port))
@@ -90,12 +90,12 @@ public static class PortFinder
             maxAttempts = 1;
         }
 
-        if (preferredPort is < 1 or > 65535 || preferredPort + maxAttempts - 1 > 65535)
+        if (preferredPort is < 1 or > 65534)
         {
             return 0;
         }
 
-        var lastCandidate = preferredPort + maxAttempts - 1;
+        var lastCandidate = Math.Min(preferredPort + maxAttempts - 1, 65534);
         for (var port = preferredPort; port <= lastCandidate; port++)
         {
             if (port + 1 > 65535)

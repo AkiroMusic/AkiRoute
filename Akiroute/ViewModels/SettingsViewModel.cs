@@ -298,8 +298,12 @@ public partial class SettingsViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Reloads settings from disk (or <see cref="ConfigFilePath"/> when set) into the
-    /// shared <see cref="Settings"/> instance and refreshes every observable wrapper.
+    /// Reloads settings from disk (or <see cref="ConfigFilePath"/> when set)
+    /// into the shared <see cref="Settings"/> instance — applied IN PLACE via
+    /// <see cref="AppSettings.CopyFrom"/> so references held by view models
+    /// (e.g. NodeListViewModel's repository) stay valid — and refreshes every
+    /// observable wrapper. Mid-session node-list re-sync additionally requires
+    /// NodeListViewModel.ReloadFromSettings (the config-restore flow).
     /// </summary>
     [RelayCommand]
     public void Load()
@@ -311,10 +315,7 @@ public partial class SettingsViewModel : ObservableObject
         _suppressSync = true;
         try
         {
-            Settings.SelectedNodeId = loaded.SelectedNodeId;
-            Settings.Nodes = loaded.Nodes;
-            Settings.ProcessRules = loaded.ProcessRules;
-            Settings.Subscriptions = loaded.Subscriptions;
+            Settings.CopyFrom(loaded);
             RefreshSubscriptionsView();
             Settings.Mode = loaded.Mode;
             Settings.Port = loaded.Port;

@@ -456,7 +456,7 @@ public partial class NodeListViewModel : ObservableObject
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException or IOException)
         {
-            AppLogger.Warn($"subscription update failed url={entry.Url} error={ex.Message}");
+            AppLogger.Warn($"subscription update failed url={RedactUrlForLog(entry.Url)} error={ex.Message}");
             return string.Format(Loc.Get("Error.SubFetchFailed"), ex.Message);
         }
 
@@ -469,7 +469,7 @@ public partial class NodeListViewModel : ObservableObject
 
         if (fresh.Count == 0)
         {
-            AppLogger.Warn($"subscription update parsed 0 nodes url={entry.Url}");
+            AppLogger.Warn($"subscription update parsed 0 nodes url={RedactUrlForLog(entry.Url)}");
             return Loc.Get("Error.SubNoNodesParsedShort");
         }
 
@@ -493,28 +493,46 @@ public partial class NodeListViewModel : ObservableObject
         {
             var entryId = entry.Id;
 
-            // Tag fresh nodes with this subscription's id.
+            // The config FINGERPRINT decides node identity, not the endpoint:
+            // a provider that keeps host:port but rotates the password/UUID
+            // produces a different fingerprint, so the stale node is replaced
+            // and the fresh credentials take effect.
+            var freshByFingerprint = new Dictionary<string, ProxyNode>(StringComparer.Ordinal);
             foreach (var node in fresh)
             {
                 node.SourceSubscriptionId = entryId;
+                freshByFingerprint[NodeFingerprint(node)] = node;
             }
 
-            // Keys of nodes that should survive after the update.
-            var freshKeys = new HashSet<string>(
-                fresh.Select(static n => NodeKey(n)),
-                StringComparer.OrdinalIgnoreCase);
+            var toRemove = new List<ProxyNode>();
+            var nameUpdates = new List<(ProxyNode Node, string Name)>();
+            foreach (var owned in _allNodes)
+            {
+                if (!string.Equals(owned.SourceSubscriptionId, entryId, StringComparison.Ordinal))
+                {
+                    continue;
+                }
 
-            // Snapshot existing nodes owned by this subscription.
-            var toRemove = _allNodes
-                .Where(n => string.Equals(n.SourceSubscriptionId, entryId, StringComparison.Ordinal)
-                            && !freshKeys.Contains(NodeKey(n)))
+                if (freshByFingerprint.TryGetValue(NodeFingerprint(owned), out var freshMatch))
+                {
+                    // Same config: only sync the provider-side display name.
+                    if (!string.Equals(owned.Name, freshMatch.Name, StringComparison.Ordinal))
+                    {
+                        nameUpdates.Add((owned, freshMatch.Name ?? string.Empty));
+                    }
+                }
+                else
+                {
+                    toRemove.Add(owned);
+                }
+            }
+
+            var existingFingerprints = new HashSet<string>(
+                _allNodes.Select(static n => NodeFingerprint(n)),
+                StringComparer.Ordinal);
+            var toAdd = fresh
+                .Where(n => !existingFingerprints.Contains(NodeFingerprint(n)))
                 .ToList();
-
-            // Snapshot fresh nodes not already present (by dedup key).
-            var existingKeys = new HashSet<string>(
-                _allNodes.Select(static n => NodeKey(n)),
-                StringComparer.OrdinalIgnoreCase);
-            var toAdd = fresh.Where(n => !existingKeys.Contains(NodeKey(n))).ToList();
 
             // Check if the currently selected node is about to be removed.
             selectionLost = toRemove.Any(n => ReferenceEquals(SelectedNode, n));
@@ -537,6 +555,11 @@ public partial class NodeListViewModel : ObservableObject
                 _allNodes.Add(node);
                 Settings.Nodes.Add(node);
                 added++;
+            }
+
+            foreach (var (owned, name) in nameUpdates)
+            {
+                owned.Name = name;
             }
 
             entry.LastUpdated = DateTimeOffset.Now;
@@ -563,7 +586,7 @@ public partial class NodeListViewModel : ObservableObject
             NodesImported?.Invoke(this, EventArgs.Empty);
         });
 
-        AppLogger.Info($"subscription updated url={entry.Url} added={added} removed={removed}");
+        AppLogger.Info($"subscription updated url={RedactUrlForLog(entry.Url)} added={added} removed={removed}");
         return string.Format(Loc.Get("Info.SubUpdated"), added, removed);
     }
 
@@ -763,4 +786,75 @@ public partial class NodeListViewModel : ObservableObject
     /// <summary>Deduplication key for a node: its type, address, and port.</summary>
     private static string NodeKey(ProxyNode node) =>
         $"{node.Type}|{node.Address}|{node.Port}";
+
+    /// <summary>
+    /// Config fingerprint for subscription updates: the endpoint plus the
+    /// credential and transport fields that change how the node connects.
+    /// Same endpoint with a rotated password/UUID yields a DIFFERENT fingerprint.
+    /// </summary>
+    private static string NodeFingerprint(ProxyNode node) =>
+        $"{node.Type}|{node.Address}|{node.Port}"
+        + $"|{Param(node, "uuid")}|{Param(node, "password")}|{Param(node, "method")}"
+        + $"|{Param(node, "flow")}|{Param(node, "security")}|{Param(node, "network")}"
+        + $"|{Param(node, "publicKey")}|{Param(node, "shortId")}|{Param(node, "spiderX")}"
+        + $"|{Param(node, "host")}|{Param(node, "path")}|{Param(node, "serviceName")}"
+        + $"|{Param(node, "obfs")}|{Param(node, "obfsPassword")}|{Param(node, "sni")}";
+
+    /// <summary>Reads an ExtraParams entry as plain text; empty when absent.</summary>
+    private static string Param(ProxyNode node, string key)
+    {
+        if (node.ExtraParams?.TryGetValue(key, out var value) != true || value is null)
+        {
+            return string.Empty;
+        }
+        return value is System.Text.Json.Nodes.JsonValue jsonValue && jsonValue.TryGetValue<string>(out var text)
+            ? text
+            : value.ToJsonString();
+    }
+
+    /// <summary>
+    /// Renders a subscription URL for logs: scheme, host, port, and path are
+    /// kept for diagnostics; query values (tokens) and the fragment are
+    /// dropped, query keys are kept.
+    /// </summary>
+    internal static string RedactUrlForLog(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return "[no-url]";
+        }
+
+        if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            return "[unparsed-url]";
+        }
+
+        var builder = new System.Text.StringBuilder();
+        builder.Append(uri.Scheme).Append("://").Append(uri.Host);
+        if (!uri.IsDefaultPort)
+        {
+            builder.Append(':').Append(uri.Port);
+        }
+        builder.Append(uri.AbsolutePath);
+
+        if (uri.Query.Length > 1)
+        {
+            builder.Append('?');
+            var first = true;
+            foreach (var pair in uri.Query[1..].Split('&', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var equals = pair.IndexOf('=');
+                var key = equals >= 0 ? pair[..equals] : pair;
+                if (!first)
+                {
+                    builder.Append('&');
+                }
+                builder.Append(key).Append("=…");
+                first = false;
+            }
+        }
+
+        return builder.ToString();
+    }
 }

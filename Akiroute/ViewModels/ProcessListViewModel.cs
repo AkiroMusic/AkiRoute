@@ -141,10 +141,12 @@ public partial class ProcessListViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Applies a routing action to an item, persists the resulting rule set into
-    /// <see cref="AppSettings.ProcessRules"/>, and raises <see cref="RulesChanged"/>.
-    /// The action itself lives on the item (and the monitor's cache), so it survives
-    /// subsequent refreshes.
+    /// Applies a routing action to an item by upserting/deleting just that
+    /// process's rule in <see cref="AppSettings.ProcessRules"/> and raising
+    /// <see cref="RulesChanged"/>. The persisted rule table is the source of
+    /// truth: rules for processes not currently running (and therefore absent
+    /// from <see cref="Items"/>) are never touched. Matching is
+    /// case-insensitive and keeps a single rule per process name.
     /// </summary>
     /// <param name="item">The process item being re-routed — a live <see cref="Items"/>
     /// entry, as passed back by the per-item toggle.</param>
@@ -153,6 +155,12 @@ public partial class ProcessListViewModel : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(item);
 
+        var processName = item.ProcessName?.Trim();
+        if (string.IsNullOrWhiteSpace(processName))
+        {
+            return;
+        }
+
         if (item.Action == action)
         {
             return;
@@ -160,8 +168,20 @@ public partial class ProcessListViewModel : ObservableObject
 
         item.Action = action;
 
-        Settings.ProcessRules.Clear();
-        Settings.ProcessRules.AddRange(BuildProcessRules());
+        // Remove every existing rule for this process name (last-write-wins,
+        // case-insensitive), then re-add only for non-default actions.
+        for (var i = Settings.ProcessRules.Count - 1; i >= 0; i--)
+        {
+            if (string.Equals(Settings.ProcessRules[i].ProcessName, processName, StringComparison.OrdinalIgnoreCase))
+            {
+                Settings.ProcessRules.RemoveAt(i);
+            }
+        }
+
+        if (action != ProcessAction.Proxy)
+        {
+            Settings.ProcessRules.Add(new ProcessRule { ProcessName = processName, Action = action });
+        }
 
         RulesChanged?.Invoke(this, EventArgs.Empty);
     }

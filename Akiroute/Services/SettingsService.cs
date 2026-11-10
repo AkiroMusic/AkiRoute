@@ -73,7 +73,9 @@ public static class SettingsService
 
         try
         {
-            return JsonSerializer.Deserialize(json, AppJsonSerializerContext.Default.AppSettings) ?? new AppSettings();
+            var settings = JsonSerializer.Deserialize(json, AppJsonSerializerContext.Default.AppSettings) ?? new AppSettings();
+            settings.Normalize();
+            return settings;
         }
         catch (JsonException ex)
         {

@@ -416,7 +416,9 @@ public sealed class ProcessMonitorService
     /// Enumerates the real process table, keeping only windowed UI processes with a
     /// resolvable executable path. Every <see cref="Process"/> member access is
     /// guarded because a process can exit — or refuse access — between enumeration
-    /// and access; unreadable processes are skipped, never thrown.
+    /// and access; unreadable processes are skipped, never thrown. Only the
+    /// CURRENT session's processes are listed (RDP / multi-user hosts must not
+    /// surface other users' windows).
     /// </summary>
     private static IEnumerable<ProcessRecord> EnumerateProcesses()
     {
@@ -431,10 +433,24 @@ public sealed class ProcessMonitorService
             processes = Array.Empty<Process>();
         }
 
+        var currentSessionId = Process.GetCurrentProcess().SessionId;
         foreach (var process in processes)
         {
             using (process)
             {
+                try
+                {
+                    if (process.SessionId != currentSessionId)
+                    {
+                        continue;
+                    }
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or Win32Exception)
+                {
+                    // The process exited or refuses access mid-check; skip it.
+                    continue;
+                }
+
                 var record = TryReadRecord(process);
                 if (record is { } value)
                 {

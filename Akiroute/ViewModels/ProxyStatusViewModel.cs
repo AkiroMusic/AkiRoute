@@ -213,14 +213,17 @@ public partial class ProxyStatusViewModel : ObservableObject
         }
     }
 
-    /// <summary>Stops the xray process and the throughput sampling loop.</summary>
-    /// <param name="cancellationToken">Cancels the pending stop.</param>
+    /// <summary>
+    /// Stops the xray process and the throughput sampling loop. A stop whose
+    /// engine exit could not be confirmed surfaces as Failed, not Stopped.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the pending stop request.</param>
     [RelayCommand]
     public async Task StopProxyAsync(CancellationToken cancellationToken = default)
     {
         StopTrafficLoop();
-        await _xray.StopAsync(cancellationToken).ConfigureAwait(true);
-        ApplyState(XrayServiceState.Stopped);
+        var exited = await _xray.StopAsync(cancellationToken).ConfigureAwait(true);
+        ApplyState(exited ? XrayServiceState.Stopped : XrayServiceState.Failed);
     }
 
     /// <summary>Marshals an xray lifecycle transition onto the UI thread.</summary>

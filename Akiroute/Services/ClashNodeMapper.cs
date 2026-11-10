@@ -100,7 +100,11 @@ internal static class ClashNodeMapper
         if (YamlMapReader.TryGetValue(map, "tls", out _))
         {
             extra["tls"] = JsonValue.Create(YamlMapReader.GetBool(map, "tls"));
-            if (type == "vless" && !extra.ContainsKey("security"))
+            // Only a TRUE tls flag derives the vless security default; an
+            // explicit tls: false must not enable TLS.
+            if (type == "vless"
+                && YamlMapReader.GetBool(map, "tls") == true
+                && !extra.ContainsKey("security"))
             {
                 extra["security"] = JsonValue.Create("tls");
             }

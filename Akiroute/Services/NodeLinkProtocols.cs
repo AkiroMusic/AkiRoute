@@ -183,6 +183,8 @@ public static partial class NodeLinkParser
         AddString(@params, "fingerprint", GetQuery(queryParams, "fp"));
         AddString(@params, "publicKey", GetQuery(queryParams, "pbk"));
         AddString(@params, "shortId", GetQuery(queryParams, "sid"));
+        // The share-link spelling of the Reality spiderX parameter is "spx".
+        AddString(@params, "spiderX", GetQuery(queryParams, "spx"));
         AddString(@params, "flow", GetQuery(queryParams, "flow"));
         AddString(@params, "network", GetQuery(queryParams, "type"));
         AddString(@params, "headerType", GetQuery(queryParams, "headerType"));
@@ -236,7 +238,12 @@ public static partial class NodeLinkParser
         SplitAuthority(authority, out var userInfo, out var hostPort);
         if (!TryParseHostPort(hostPort, out var address, out var port))
         {
-            return null;
+            // The official share-URI form allows omitting the port (defaults to 443).
+            if (!TryParseHostOnly(hostPort, out address))
+            {
+                return null;
+            }
+            port = 443;
         }
 
         var queryParams = ParseQuery(query);
@@ -249,6 +256,39 @@ public static partial class NodeLinkParser
         AddString(@params, "alpn", GetQuery(queryParams, "alpn"));
 
         return NewNode("hysteria2", address, port, ResolveName(fragment, "hysteria2", address, port), raw, @params);
+    }
+
+    /// <summary>
+    /// Parses a bare host (no port): a bracketed IPv6 literal "[::1]" or a
+    /// colon-free hostname. Returns false when a port separator is present —
+    /// that form belongs to <see cref="TryParseHostPort"/> (in NodeLinkParser).
+    /// </summary>
+    private static bool TryParseHostOnly(string hostPort, out string address)
+    {
+        address = string.Empty;
+        if (string.IsNullOrEmpty(hostPort))
+        {
+            return false;
+        }
+
+        if (hostPort[0] == '[')
+        {
+            var close = hostPort.IndexOf(']');
+            if (close <= 0 || close != hostPort.Length - 1)
+            {
+                return false;
+            }
+            address = hostPort[1..close];
+            return address.Length > 0;
+        }
+
+        if (hostPort.Contains(':'))
+        {
+            return false;
+        }
+
+        address = hostPort;
+        return true;
     }
 
     /// <summary>

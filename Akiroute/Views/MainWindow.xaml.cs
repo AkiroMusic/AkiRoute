@@ -94,6 +94,9 @@ public sealed partial class MainWindow : Window
             _vm.SaveSettings();
             _vm.Settings.RefreshSubscriptionsView();
             UpdateSubscriptionsEmptyHint();
+            // Subscription updates may rename nodes in place (fingerprint
+            // unchanged); force the cards to re-render their identity fields.
+            RefreshNodeCards();
         };
 
         // Auto-persist whenever an editable setting changes; this also keeps

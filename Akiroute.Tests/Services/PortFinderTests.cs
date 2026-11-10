@@ -100,13 +100,36 @@ public class PortFinderTests
     }
 
     [Fact]
-    public void FindFreePort_ReturnsZero_WhenProbeWindowOverflowsPortSpace()
+    public void FindFreePort_TruncatesWindowAtPortSpaceEnd()
     {
-        // Act: 65530 + 27 exceeds 65535, so the window cannot exist.
-        var port = PortFinder.FindFreePort(65530, 28);
+        // Arrange: occupy the whole valid remainder 65530..65535.
+        var listeners = BindRange(65530, 65535);
+        try
+        {
+            // Act: 65530 + 27 exceeds 65535, but the truncated window
+            // 65530..65535 is still probed — every candidate occupied → 0.
+            var port = PortFinder.FindFreePort(65530, 28);
+
+            // Assert.
+            Assert.Equal(0, port);
+        }
+        finally
+        {
+            Release(listeners);
+        }
+
+        // With the listeners released, 65530 itself is free and wins.
+        Assert.Equal(65530, PortFinder.FindFreePort(65530, 28));
+    }
+
+    [Fact]
+    public void FindFreePort_CanReturn65535()
+    {
+        // Act: 65535 is a valid single-port candidate.
+        var port = PortFinder.FindFreePort(65535, 1);
 
         // Assert.
-        Assert.Equal(0, port);
+        Assert.Equal(65535, port);
     }
 
     [Fact]
@@ -193,6 +216,37 @@ public class PortFinderTests
         Assert.Equal(0, PortFinder.FindFreePortPair(0, 28));
         Assert.Equal(0, PortFinder.FindFreePortPair(65536, 28));
         Assert.Equal(0, PortFinder.FindFreePortPair(65535, 28)); // pair would overflow
+    }
+
+    [Fact]
+    public void FindFreePortPair_TruncatesWindowAtPortSpaceEnd()
+    {
+        // Arrange: occupy 65530..65535 — the truncated window 65530..65534 has
+        // no free pair.
+        var listeners = BindRange(65530, 65535);
+        try
+        {
+            var port = PortFinder.FindFreePortPair(65530, 28);
+
+            Assert.Equal(0, port);
+        }
+        finally
+        {
+            Release(listeners);
+        }
+
+        // Still bound: 65530..65535 → no pair anywhere → 0 was asserted above.
+        // Now free ONLY 65534/65535: the pair starting at 65534 is usable.
+        Release(listeners);
+        var tail = BindRange(65530, 65533);
+        try
+        {
+            Assert.Equal(65534, PortFinder.FindFreePortPair(65530, 28));
+        }
+        finally
+        {
+            Release(tail);
+        }
     }
 
     private static int GetFreeEphemeralPort()

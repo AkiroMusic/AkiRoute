@@ -622,6 +622,70 @@ public class NodeListViewModelTests
     }
 
     [Fact]
+    public async Task UpdateSubscriptionAsync_SameEndpointRotatedPassword_ReplacesNode()
+    {
+        var settings = new AppSettings();
+        var vm = NewViewModel(settings);
+
+        vm.SubscriptionFetchOverrideForTests = (_, _) => Task.FromResult(S1Link);
+        await vm.ImportSubscriptionAsync("https://feed.example.com/sub");
+        var entry = Assert.Single(settings.Subscriptions);
+        var original = Assert.Single(settings.Nodes);
+        Assert.Equal("testpass123", original.ExtraParams?["password"]?.ToJsonString().Trim('"'));
+
+        // Same host:port, rotated password and a new node name — the config
+        // fingerprint changes, so the node must be REPLACED and the fresh
+        // credentials must take effect.
+        var rotatedInfo = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("aes-256-gcm:newpass456"))
+            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        vm.SubscriptionFetchOverrideForTests = (_, _) =>
+            Task.FromResult($"ss://{rotatedInfo}@example.com:8388#Rotated");
+        var result = await vm.UpdateSubscriptionAsync(entry);
+
+        var node = Assert.Single(settings.Nodes);
+        Assert.Equal("newpass456", node.ExtraParams?["password"]?.ToJsonString().Trim('"'));
+        Assert.Equal("Rotated", node.Name);
+        Assert.Equal(entry.Id, node.SourceSubscriptionId);
+        Assert.Contains("1 added", result);
+        Assert.Contains("1 removed", result);
+    }
+
+    [Fact]
+    public async Task UpdateSubscriptionAsync_SameFingerprint_SyncsDisplayName()
+    {
+        var settings = new AppSettings();
+        var vm = NewViewModel(settings);
+
+        vm.SubscriptionFetchOverrideForTests = (_, _) => Task.FromResult(S1Link);
+        await vm.ImportSubscriptionAsync("https://feed.example.com/sub");
+        var entry = Assert.Single(settings.Subscriptions);
+        var original = Assert.Single(settings.Nodes);
+
+        // Same config, provider renamed the node: no add/remove, name synced.
+        vm.SubscriptionFetchOverrideForTests = (_, _) =>
+            Task.FromResult($"ss://{SsUserInfo}@example.com:8388#Renamed");
+        var result = await vm.UpdateSubscriptionAsync(entry);
+
+        Assert.Same(original, Assert.Single(settings.Nodes));
+        Assert.Equal("Renamed", original.Name);
+        Assert.Contains("0 added", result);
+        Assert.Contains("0 removed", result);
+    }
+
+    [Fact]
+    public void RedactUrlForLog_DropsQueryValuesAndFragment()
+    {
+        Assert.Equal(
+            "https://sub.example.com/path?token=…&key=…",
+            NodeListViewModel.RedactUrlForLog("https://user:secret@sub.example.com/path?token=TOPSECRET&key=abc#frag"));
+        // Non-HTTP schemes and garbage never leak the input.
+        Assert.Equal("[unparsed-url]", NodeListViewModel.RedactUrlForLog("ftp://x/y?token=1"));
+        Assert.Equal("[unparsed-url]", NodeListViewModel.RedactUrlForLog("not a url"));
+        Assert.Equal("[no-url]", NodeListViewModel.RedactUrlForLog(null));
+        Assert.Equal("[no-url]", NodeListViewModel.RedactUrlForLog("  "));
+    }
+
+    [Fact]
     public async Task UpdateSubscriptionAsync_FetchFailure_NoMutation()
     {
         var settings = new AppSettings();

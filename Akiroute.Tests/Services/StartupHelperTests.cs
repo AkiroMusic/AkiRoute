@@ -50,8 +50,12 @@ public class StartupHelperTests : IDisposable
         {
             var ok = StartupHelper.SetLaunchOnStartup(true);
             Assert.True(ok);
+            // The Run value is a command line: the path must be quoted so
+            // install locations with spaces survive.
             var value = root.GetValue("Akiroute") as string;
             Assert.False(string.IsNullOrEmpty(value));
+            Assert.StartsWith("\"", value);
+            Assert.EndsWith("\"", value);
         }
     }
 
@@ -104,16 +108,30 @@ public class StartupHelperTests : IDisposable
     [Fact]
     public void Reconcile_EnabledWithCurrentPath_KeepsEntry()
     {
+        // Quote-free comparison: an existing quoted entry pointing at the
+        // current exe must NOT be rewritten or treated as stale.
         var exePath = Environment.ProcessPath ?? "C:\\current\\Akiroute.exe";
         using (var root = Registry.CurrentUser.CreateSubKey(ScratchRunKey, writable: true))
         {
-            root.SetValue("Akiroute", exePath);
+            root.SetValue("Akiroute", "\"" + exePath + "\"");
         }
 
         StartupHelper.ReconcileLaunchOnStartup(desired: true);
 
         using var root2 = Registry.CurrentUser.OpenSubKey(ScratchRunKey);
-        Assert.Equal(exePath, root2?.GetValue("Akiroute") as string);
+        Assert.Equal("\"" + exePath + "\"", root2?.GetValue("Akiroute") as string);
+    }
+
+    [Fact]
+    public void GetRegisteredExePath_StripsQuotes()
+    {
+        using (var root = Registry.CurrentUser.CreateSubKey(ScratchRunKey, writable: true))
+        {
+            root.SetValue("Akiroute", "\"C:\\Program Files\\Akiroute\\Akiroute.exe\"");
+        }
+
+        Assert.Equal("C:\\Program Files\\Akiroute\\Akiroute.exe", StartupHelper.GetRegisteredExePath());
+        Assert.True(StartupHelper.IsLaunchOnStartupEnabled());
     }
 
     [Fact]

@@ -106,6 +106,57 @@ public class ProcessListViewModelTests
     }
 
     [Fact]
+    public void SetAction_PreservesRulesForProcessesNotCurrentlyRunning()
+    {
+        // A persisted rule for a process that is NOT in the current scan
+        // (not running) must survive edits to OTHER processes — the rule
+        // table is the source of truth, never rebuilt from the scan.
+        var settings = new AppSettings();
+        settings.ProcessRules.Add(new ProcessRule { ProcessName = "not-running.exe", Action = ProcessAction.Direct });
+        var vm = NewViewModel(NewService(Array.Empty<ProcessMonitorService.ProcessRecord>()), settings);
+        var item = new ProcessInfoItem { ProcessName = "chrome.exe" };
+        vm.Items.Add(item);
+
+        vm.SetAction(item, ProcessAction.Block);
+
+        Assert.Equal(2, settings.ProcessRules.Count);
+        Assert.Contains(settings.ProcessRules, r => r.ProcessName == "not-running.exe" && r.Action == ProcessAction.Direct);
+        Assert.Contains(settings.ProcessRules, r => r.ProcessName == "chrome.exe" && r.Action == ProcessAction.Block);
+    }
+
+    [Fact]
+    public void SetAction_Proxy_RemovesOnlyThatRule()
+    {
+        var settings = new AppSettings();
+        settings.ProcessRules.Add(new ProcessRule { ProcessName = "game.exe", Action = ProcessAction.Block });
+        settings.ProcessRules.Add(new ProcessRule { ProcessName = "chrome.exe", Action = ProcessAction.Direct });
+        var vm = NewViewModel(NewService(Array.Empty<ProcessMonitorService.ProcessRecord>()), settings);
+        var item = new ProcessInfoItem { ProcessName = "GAME.EXE", Action = ProcessAction.Block };
+        vm.Items.Add(item);
+
+        // Case-insensitive match: reverting GAME.EXE removes only its rule.
+        vm.SetAction(item, ProcessAction.Proxy);
+
+        var rule = Assert.Single(settings.ProcessRules);
+        Assert.Equal("chrome.exe", rule.ProcessName);
+    }
+
+    [Fact]
+    public void SetAction_ReApply_ReplacesInsteadOfDuplicating()
+    {
+        var settings = new AppSettings();
+        var vm = NewViewModel(NewService(Array.Empty<ProcessMonitorService.ProcessRecord>()), settings);
+        var item = new ProcessInfoItem { ProcessName = "chrome.exe" };
+        vm.Items.Add(item);
+
+        vm.SetAction(item, ProcessAction.Direct);
+        vm.SetAction(item, ProcessAction.Block);
+
+        var rule = Assert.Single(settings.ProcessRules);
+        Assert.Equal(ProcessAction.Block, rule.Action);
+    }
+
+    [Fact]
     public async Task RefreshAsync_PreCancelledToken_LeavesItemsUntouchedAndPropagatesCancellation()
     {
         var service = NewService(new[]

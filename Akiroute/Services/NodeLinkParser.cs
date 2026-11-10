@@ -40,8 +40,9 @@ public static partial class NodeLinkParser
     /// <summary>
     /// Cheap shape check modeled on HexagonProxy's <c>_is_plausible_share_uri</c>:
     /// rejects tokens that cannot be a share link before the full parse runs.
-    /// vless/trojan/hysteria2/hy2/tuic need userinfo@host:port, vmess needs a
-    /// base64 payload, and ss needs '@' (or a base64 payload that decodes to one).
+    /// vless/trojan/tuic need userinfo@host:port, hysteria2 allows auth-less
+    /// host:port, vmess needs a base64 payload, and ss needs '@' (or a base64
+    /// payload that decodes to one).
     /// </summary>
     private static bool IsPlausibleLink(string token)
     {
@@ -62,8 +63,6 @@ public static partial class NodeLinkParser
         {
             case "vless":
             case "trojan":
-            case "hysteria2":
-            case "hy2":
             case "tuic":
                 // Authority must carry non-empty userinfo@host:port ("[::1]:443" included).
                 SplitBody(payload, out var authority, out _, out _);
@@ -71,6 +70,13 @@ public static partial class NodeLinkParser
                 return at > 0
                     && at < authority.Length - 1
                     && authority[(at + 1)..].Contains(':');
+            case "hysteria2":
+            case "hy2":
+                // Auth and port are both optional: "auth@host:port",
+                // "auth@host", "host:port", and bare "host" all parse. The
+                // full parser validates the host and defaults the port to 443.
+                SplitBody(payload, out var hyAuthority, out _, out _);
+                return hyAuthority.Length > 0;
             case "vmess":
                 var hash = payload.IndexOf('#');
                 var vmessPayload = hash < 0 ? payload : payload[..hash];

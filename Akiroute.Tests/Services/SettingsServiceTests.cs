@@ -167,6 +167,28 @@ public class SettingsServiceTests : IDisposable
     }
 
     [Fact]
+    public void Load_NullCollections_NormalizedToEmpty()
+    {
+        // Arrange: a syntactically valid file with explicit nulls (e.g. a
+        // hand-edited backup). Deserialization yields null collections, which
+        // must never reach the app (startup would crash iterating them).
+        Directory.CreateDirectory(_tempDir);
+        File.WriteAllText(ConfigPath, "{\"nodes\":null,\"processRules\":null,\"subscriptions\":null,\"port\":4321}");
+
+        // Act.
+        var result = SettingsService.Load(ConfigPath);
+
+        // Assert: collections are empty (non-null), scalars survive.
+        Assert.NotNull(result.Nodes);
+        Assert.NotNull(result.ProcessRules);
+        Assert.NotNull(result.Subscriptions);
+        Assert.Empty(result.Nodes);
+        Assert.Empty(result.ProcessRules);
+        Assert.Empty(result.Subscriptions);
+        Assert.Equal(4321, result.Port);
+    }
+
+    [Fact]
     public void Save_WritesEncryptedWrapper_NotPlaintextSecrets()
     {
         // Act: save settings carrying a credential-bearing subscription URL.

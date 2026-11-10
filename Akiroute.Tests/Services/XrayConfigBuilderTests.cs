@@ -100,7 +100,9 @@ public class XrayConfigBuilderTests
         Assert.Equal("tls", stream["security"]!.GetValue<string>());
         var tls = stream["tlsSettings"]!;
         Assert.Equal("example.com", tls["serverName"]!.GetValue<string>());
-        Assert.True(tls["allowInsecure"]!.GetValue<bool>());
+        // The bundled engine removed allowInsecure and rejects configs
+        // carrying it — the builder must never emit it.
+        Assert.Null(tls["allowInsecure"]);
         Assert.Equal("h2", tls["alpn"]![0]!.GetValue<string>());
         Assert.Equal("h3", tls["alpn"]![1]!.GetValue<string>());
     }
@@ -195,9 +197,10 @@ public class XrayConfigBuilderTests
         // Act.
         var config = XrayConfigBuilder.Build(node, Array.Empty<ProcessRule>(), LocalPort, ProxyMode.Global);
 
-        // Assert: the outbound is ss with the method/password on the server entry.
+        // Assert: the outbound uses the engine's "shadowsocks" protocol name
+        // (verified against the bundled engine; "ss" is rejected).
         var outbound = config["outbounds"]![0]!;
-        Assert.Equal("ss", outbound["protocol"]!.GetValue<string>());
+        Assert.Equal("shadowsocks", outbound["protocol"]!.GetValue<string>());
         var server = outbound["settings"]!["servers"]![0]!;
         Assert.Equal("example.com", server["address"]!.GetValue<string>());
         Assert.Equal(8388, server["port"]!.GetValue<int>());
@@ -228,38 +231,51 @@ public class XrayConfigBuilderTests
         // Act.
         var config = XrayConfigBuilder.Build(node, Array.Empty<ProcessRule>(), LocalPort, ProxyMode.Global);
 
-        // Assert: settings.tls maps sni/insecure; obfs carries type and password.
-        var settings = config["outbounds"]![0]!["settings"]!;
-        Assert.Equal("hysteria2", config["outbounds"]![0]!["protocol"]!.GetValue<string>());
-        Assert.Equal("example.com", settings["tls"]!["sni"]!.GetValue<string>());
-        Assert.True(settings["tls"]!["insecure"]!.GetValue<bool>());
+        // Assert: engine "hysteria" outbound (version 2) — auth/obfs in
+        // settings, TLS terminates via streamSettings; insecure is dropped
+        // (the engine removed allowInsecure).
+        var outbound = config["outbounds"]![0]!;
+        Assert.Equal("hysteria", outbound["protocol"]!.GetValue<string>());
+        var settings = outbound["settings"]!;
+        Assert.Equal(2, settings["version"]!.GetValue<int>());
+        Assert.Equal("example.com", settings["address"]!.GetValue<string>());
+        Assert.Equal(8443, settings["port"]!.GetValue<int>());
+        Assert.Equal("authpass", settings["auth"]!.GetValue<string>());
         Assert.Equal("salamander", settings["obfs"]!["type"]!.GetValue<string>());
         Assert.Equal("obfspw", settings["obfs"]!["password"]!.GetValue<string>());
+        Assert.Null(settings["tls"]);
+        Assert.Null(settings["servers"]);
+
+        var stream = outbound["streamSettings"]!;
+        Assert.Equal("hysteria", stream["network"]!.GetValue<string>());
+        Assert.Equal("tls", stream["security"]!.GetValue<string>());
+        Assert.Equal("example.com", stream["tlsSettings"]!["serverName"]!.GetValue<string>());
+        Assert.Null(stream["tlsSettings"]!["insecure"]);
     }
 
     [Fact]
-    public void Build_WithHysteria2Node_InsecureDefaultsToFalse()
+    public void Build_WithHysteria2Node_NoAuth_ReducesToBareServer()
     {
-        // Arrange: a hysteria2 node with no insecure param.
+        // Arrange: a hysteria2 node with no auth (and no obfs).
         var node = new ProxyNode
         {
             Type = "hysteria2",
             Address = "example.com",
             Port = 8443,
-            ExtraParams = Params(("password", "authpass")),
         };
 
         // Act.
         var config = XrayConfigBuilder.Build(node, Array.Empty<ProcessRule>(), LocalPort, ProxyMode.Global);
 
-        // Assert: no insecure field is emitted when absent.
-        var tls = config["outbounds"]![0]!["settings"]!["tls"]!;
-        Assert.Equal("example.com", tls["sni"]!.GetValue<string>());
-        Assert.Null(tls["insecure"]);
+        // Assert: settings carries only the server identity; no auth/obfs keys.
+        var settings = config["outbounds"]![0]!["settings"]!;
+        Assert.Null(settings["auth"]);
+        Assert.Null(settings["obfs"]);
+        Assert.Equal(2, settings["version"]!.GetValue<int>());
     }
 
     [Fact]
-    public void Build_WithTuicNode_MapsServersAndTls()
+    public void Build_WithTuicNode_ThrowsUnsupportedByEngine()
     {
         // Arrange: a tuic node.
         var node = new ProxyNode
@@ -267,32 +283,15 @@ public class XrayConfigBuilderTests
             Type = "tuic",
             Address = "example.com",
             Port = 7777,
-            ExtraParams = new Dictionary<string, JsonNode>
-            {
-                ["uuid"] = JsonValue.Create(Uuid)!,
-                ["password"] = JsonValue.Create("tupass")!,
-                ["congestionControl"] = JsonValue.Create("bbr")!,
-                ["udpRelayMode"] = JsonValue.Create("native")!,
-                ["alpn"] = JsonValue.Create("h3")!,
-                ["allowInsecure"] = JsonValue.Create(true),
-                ["sni"] = JsonValue.Create("example.com")!,
-            },
+            ExtraParams = Params(("uuid", Uuid), ("password", "tupass")),
         };
 
-        // Act.
-        var config = XrayConfigBuilder.Build(node, Array.Empty<ProcessRule>(), LocalPort, ProxyMode.Global);
-
-        // Assert: server fields and the tls block.
-        var outbound = config["outbounds"]![0]!;
-        Assert.Equal("tuic", outbound["protocol"]!.GetValue<string>());
-        var server = outbound["settings"]!["servers"]![0]!;
-        Assert.Equal(Uuid, server["uuid"]!.GetValue<string>());
-        Assert.Equal("bbr", server["congestion_control"]!.GetValue<string>());
-        Assert.Equal("native", server["udp_relay_mode"]!.GetValue<string>());
-        var tls = outbound["settings"]!["tls"]!;
-        Assert.Equal("example.com", tls["sni"]!.GetValue<string>());
-        Assert.Equal("h3", tls["alpn"]![0]!.GetValue<string>());
-        Assert.True(tls["insecure"]!.GetValue<bool>());
+        // Act + Assert: the bundled Xray-core has no tuic outbound (verified
+        // against the packaged engine) — the build must fail loudly instead of
+        // emitting a config the engine cannot load.
+        var ex = Assert.Throws<ArgumentException>(() =>
+            XrayConfigBuilder.Build(node, Array.Empty<ProcessRule>(), LocalPort, ProxyMode.Global));
+        Assert.Contains("TUIC", ex.Message);
     }
 
     [Fact]

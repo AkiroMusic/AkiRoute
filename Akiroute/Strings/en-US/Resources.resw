@@ -329,7 +329,7 @@
     <value>Subscription URL</value>
   </data>
   <data name="ImportPasteBox.PlaceholderText" xml:space="preserve">
-    <value>Paste vless://, vmess://, ss://, trojan://, hysteria2://, tuic:// links, Base64 subscription body, or Clash config</value>
+    <value>Paste vless://, vmess://, ss://, trojan://, hysteria2:// links, a Base64 subscription body, or a Clash config</value>
   </data>
   <data name="ImportUrlBox.PlaceholderText" xml:space="preserve">
     <value>https:// subscription URL</value>

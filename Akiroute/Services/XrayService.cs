@@ -154,10 +154,14 @@ public sealed class XrayService : IDisposable
     {
         try
         {
-            if (File.Exists(AppPaths.XrayConfigTemp))
+            // Both the config itself and its staging file carry credentials.
+            foreach (var leftover in new[] { AppPaths.XrayConfigTemp, AppPaths.XrayConfigTemp + ".tmp" })
             {
-                File.Delete(AppPaths.XrayConfigTemp);
-                AppLogger.Info("deleted orphaned xray temp config from a previous session");
+                if (File.Exists(leftover))
+                {
+                    File.Delete(leftover);
+                    AppLogger.Info("deleted orphaned xray temp config from a previous session");
+                }
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -261,19 +265,24 @@ public sealed class XrayService : IDisposable
     }
 
     /// <summary>
-    /// Stops the xray subprocess if one is running. Kills the process tree, waits
-    /// for it to exit, and transitions to <see cref="XrayServiceState.Stopped"/>.
-    /// A no-op when nothing is running. Cancellation still performs the kill and
-    /// dispose and never leaks a throw.
+    /// Stops the xray subprocess if one is running. Kills the process tree and
+    /// waits for it to actually exit (bounded by a second-chance kill), then
+    /// transitions to <see cref="XrayServiceState.Stopped"/> — or
+    /// <see cref="XrayServiceState.Failed"/> when the exit could not be
+    /// confirmed. A no-op (returns true) when nothing is running. The stop
+    /// COMPLETES once started: <paramref name="cancellationToken"/> cannot
+    /// abandon the kill/cleanup sequence.
     /// </summary>
-    public async Task StopAsync(CancellationToken cancellationToken = default)
+    /// <returns>True when no engine is running afterwards; false when the
+    /// engine's exit could not be confirmed.</returns>
+    public async Task<bool> StopAsync(CancellationToken cancellationToken = default)
     {
         // Acquire with CancellationToken.None so a pre-cancelled token cannot
         // prevent a running process from being killed and disposed.
         await _lifecycleLock.WaitAsync(CancellationToken.None).ConfigureAwait(false);
         try
         {
-            await StopCoreAsync(cancellationToken).ConfigureAwait(false);
+            return await StopCoreAsync().ConfigureAwait(false);
         }
         finally
         {
@@ -435,6 +444,9 @@ public sealed class XrayService : IDisposable
         {
             _process = process;
             _stopping = false;
+            // Crash summaries must reflect THIS run only; drop the previous
+            // run's log lines before the new engine starts emitting.
+            _recentLogs.Clear();
         }
         SetState(XrayServiceState.Starting);
 
@@ -459,6 +471,17 @@ public sealed class XrayService : IDisposable
         process.Exited += OnProcessExited;
 
         var ready = await ProbeReadinessAsync(process, localPort, cancellationToken).ConfigureAwait(false);
+        if (ready && HasExitedSafely(process))
+        {
+            // The inbound answered but the engine already exited (crashed
+            // right after binding): report the crash instead of Running.
+            ready = false;
+            if (string.IsNullOrEmpty(LastCrashSummary))
+            {
+                LastCrashSummary = "xray exited immediately after becoming ready";
+            }
+        }
+
         if (!ready)
         {
             var cancelled = cancellationToken.IsCancellationRequested;
@@ -502,7 +525,7 @@ public sealed class XrayService : IDisposable
         return true;
     }
 
-    private async Task StopCoreAsync(CancellationToken cancellationToken)
+    private async Task<bool> StopCoreAsync()
     {
         Process? process;
         lock (_gate)
@@ -514,7 +537,7 @@ public sealed class XrayService : IDisposable
                     IsRunning = false;
                     SetState(XrayServiceState.Stopped);
                 }
-                return;
+                return true;
             }
             _stopping = true;
             process = _process;
@@ -522,21 +545,38 @@ public sealed class XrayService : IDisposable
 
         TryKill(process);
 
-        try
+        // Kill() returning does not mean the OS has reaped the process — wait
+        // for the real exit WITHOUT honoring any cancellation token, bounded
+        // by a timeout and a second-chance kill for a wedged engine.
+        var exited = await WaitForExitBoundedAsync(process, TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+
+        if (!exited && !HasExitedSafely(process))
         {
-            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is OperationCanceledException or InvalidOperationException or ObjectDisposedException)
-        {
-            // Cancellation, or the Exited handler already reaped the process;
-            // either way the process was killed above and is cleaned up below.
+            TryKill(process);
+            exited = await WaitForExitBoundedAsync(process, TimeSpan.FromSeconds(1)).ConfigureAwait(false);
         }
 
+        exited = exited || HasExitedSafely(process);
         CleanupProcess();
-        DeleteConfigTemp();
-        IsRunning = false;
-        LocalPort = 0;
-        SetState(XrayServiceState.Stopped);
+
+        if (exited)
+        {
+            DeleteConfigTemp();
+            IsRunning = false;
+            LocalPort = 0;
+            LastCrashSummary = null;
+            SetState(XrayServiceState.Stopped);
+        }
+        else
+        {
+            // The engine exit could not be confirmed — never claim Stopped,
+            // and keep the credential-bearing config (the engine may live on).
+            IsRunning = false;
+            LastCrashSummary = "xray did not exit after a stop request";
+            SetState(XrayServiceState.Failed);
+        }
+
+        return exited;
     }
 
     /// <summary>
@@ -551,6 +591,27 @@ public sealed class XrayService : IDisposable
         }
         catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)
         {
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Waits for the process to exit for at most <paramref name="timeout"/>,
+    /// never honoring a cancellation token (a stop in progress must finish)
+    /// and never throwing when the Exited handler reaps the process first.
+    /// Returns true only when the exit was observed.
+    /// </summary>
+    private static async Task<bool> WaitForExitBoundedAsync(Process process, TimeSpan timeout)
+    {
+        try
+        {
+            var waitTask = process.WaitForExitAsync(CancellationToken.None);
+            var completed = await Task.WhenAny(waitTask, Task.Delay(timeout)).ConfigureAwait(false);
+            return completed == waitTask;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)
+        {
+            // The Exited handler already disposed/reaped the process.
             return true;
         }
     }
@@ -717,8 +778,27 @@ public sealed class XrayService : IDisposable
         // IL3050/IL2026 under Native AOT (reflection-based metadata lookup).
         var json = config.ToJsonString();
 
-        File.WriteAllText(tmpPath, json);
-        File.Move(tmpPath, fullPath, overwrite: true);
+        try
+        {
+            File.WriteAllText(tmpPath, json);
+            File.Move(tmpPath, fullPath, overwrite: true);
+        }
+        finally
+        {
+            // A failed write or move must not leave the credential-bearing
+            // staging file in the temp directory.
+            try
+            {
+                if (File.Exists(tmpPath))
+                {
+                    File.Delete(tmpPath);
+                }
+            }
+            catch (Exception cleanupEx) when (cleanupEx is IOException or UnauthorizedAccessException)
+            {
+                AppLogger.Warn($"[XrayService] Could not remove config staging file: {cleanupEx.Message}");
+            }
+        }
     }
 
     /// <summary>Kills the process tree, tolerating an already-exited process.</summary>

@@ -6,13 +6,21 @@ namespace Akiroute.Models;
 [JsonConverter(typeof(JsonStringEnumConverter<ProxyMode>))]
 public enum ProxyMode
 {
-    /// <summary>Route all traffic through the selected node.</summary>
+    /// <summary>
+    /// Route all traffic through the selected node. Explicit per-process rules
+    /// still take precedence (a process set to Direct/Block keeps that routing;
+    /// a process set to Proxy keeps proxying).
+    /// </summary>
     Global,
 
     /// <summary>Route traffic according to the routing rules.</summary>
     Rule,
 
-    /// <summary>Bypass the proxy entirely; direct connections only.</summary>
+    /// <summary>
+    /// Direct connections for everything except explicit per-process rules
+    /// (a process set to Proxy still routes through the proxy; Direct/Block
+    /// rules keep their effect).
+    /// </summary>
     DirectOnly,
 
     /// <summary>Apply per-process rules only.</summary>
@@ -106,13 +114,20 @@ public class AppSettings
     {
         ArgumentNullException.ThrowIfNull(other);
 
+        // Hand-edited or hand-crafted files may carry explicit nulls; treat
+        // them as empty so a restore can never NRE halfway through (which
+        // would leave the live state partially applied).
+        var otherNodes = other.Nodes ?? [];
+        var otherRules = other.ProcessRules ?? [];
+        var otherSubs = other.Subscriptions ?? [];
+
         SelectedNodeId = other.SelectedNodeId;
         Nodes.Clear();
-        Nodes.AddRange(other.Nodes);
+        Nodes.AddRange(otherNodes);
         ProcessRules.Clear();
-        ProcessRules.AddRange(other.ProcessRules);
+        ProcessRules.AddRange(otherRules);
         Subscriptions.Clear();
-        Subscriptions.AddRange(other.Subscriptions);
+        Subscriptions.AddRange(otherSubs);
         Mode = other.Mode;
         Port = other.Port;
         AutoConnect = other.AutoConnect;
@@ -126,5 +141,20 @@ public class AppSettings
         WindowY = other.WindowY;
         WindowWidth = other.WindowWidth;
         WindowHeight = other.WindowHeight;
+    }
+
+    /// <summary>
+    /// Replaces null collection properties with empty ones and drops null
+    /// elements, so a file that deserialized with explicit nulls can never
+    /// crash startup or a restore. Call right after deserialization.
+    /// </summary>
+    public void Normalize()
+    {
+        Nodes ??= [];
+        ProcessRules ??= [];
+        Subscriptions ??= [];
+        Nodes.RemoveAll(static n => n is null);
+        ProcessRules.RemoveAll(static r => r is null);
+        Subscriptions.RemoveAll(static s2 => s2 is null);
     }
 }

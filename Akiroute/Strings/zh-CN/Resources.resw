@@ -329,7 +329,7 @@
     <value>订阅地址</value>
   </data>
   <data name="ImportPasteBox.PlaceholderText" xml:space="preserve">
-    <value>粘贴 vless://, vmess://, ss://, trojan://, hysteria2://, tuic:// 链接、Base64 订阅正文或 Clash 配置</value>
+    <value>粘贴 vless://、vmess://、ss://、trojan://、hysteria2:// 链接、Base64 订阅正文或 Clash 配置</value>
   </data>
   <data name="ImportUrlBox.PlaceholderText" xml:space="preserve">
     <value>https:// 订阅地址</value>

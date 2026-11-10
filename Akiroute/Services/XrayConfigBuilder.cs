@@ -115,7 +115,11 @@ public static class XrayConfigBuilder
         "ss" => BuildSsOutbound(node),
         "trojan" => BuildTrojanOutbound(node),
         "hysteria2" => BuildHysteria2Outbound(node),
-        "tuic" => BuildTuicOutbound(node),
+        // The bundled Xray-core has no tuic outbound (verified against the
+        // packaged engine); reject at config build instead of emitting a
+        // config the engine cannot load.
+        "tuic" => throw new ArgumentException(
+            "TUIC is not supported by the bundled Xray engine.", nameof(node)),
         _ => throw new ArgumentException($"Unsupported node type: \"{node.Type}\".", nameof(node)),
     };
 
@@ -199,7 +203,8 @@ public static class XrayConfigBuilder
         return new JsonObject
         {
             ["tag"] = "proxy",
-            ["protocol"] = "ss",
+            // Internal "ss" maps to the engine's outbound name "shadowsocks".
+            ["protocol"] = "shadowsocks",
             ["settings"] = new JsonObject { ["servers"] = new JsonArray { (JsonNode?)server } },
         };
     }
@@ -225,25 +230,22 @@ public static class XrayConfigBuilder
         return outbound;
     }
 
-    /// <summary>Builds a hysteria2 outbound: servers plus tls/obfs inside settings.</summary>
+    /// <summary>
+    /// Builds a hysteria2 outbound as the engine's "hysteria" protocol with
+    /// version 2: address/port/auth/obfs belong in settings, TLS terminates
+    /// through streamSettings. Certificate-skip flags are not emitted — the
+    /// engine removed allowInsecure and has no insecure field on this outbound.
+    /// </summary>
     private static JsonObject BuildHysteria2Outbound(ProxyNode node)
     {
         var p = EnsureParams(node);
-        var server = new JsonObject
+        var settings = new JsonObject
         {
+            ["version"] = JsonValue.Create(2),
             ["address"] = node.Address!,
             ["port"] = JsonValue.Create(node.Port),
         };
-        AddString(server, "password", Str(p, "password"));
-
-        var settings = new JsonObject { ["servers"] = new JsonArray { (JsonNode?)server } };
-
-        var tls = new JsonObject { ["sni"] = Str(p, "sni") ?? node.Address! };
-        if (BoolParam(p, "insecure") ?? false)
-        {
-            tls["insecure"] = true;
-        }
-        settings["tls"] = tls;
+        AddString(settings, "auth", Str(p, "password"));
 
         var obfs = Str(p, "obfs");
         if (!string.IsNullOrEmpty(obfs))
@@ -253,51 +255,23 @@ public static class XrayConfigBuilder
             settings["obfs"] = obfsSettings;
         }
 
-        return new JsonObject
-        {
-            ["tag"] = "proxy",
-            ["protocol"] = "hysteria2",
-            ["settings"] = settings,
-        };
-    }
-
-    /// <summary>Builds a tuic outbound: servers plus tls inside settings.</summary>
-    private static JsonObject BuildTuicOutbound(ProxyNode node)
-    {
-        var p = EnsureParams(node);
-        var uuid = RequiredString(p, "uuid", node);
-
-        var server = new JsonObject
-        {
-            ["address"] = node.Address!,
-            ["port"] = JsonValue.Create(node.Port),
-            ["uuid"] = uuid,
-            ["congestion_control"] = Str(p, "congestionControl") ?? "cubic",
-        };
-        AddString(server, "password", Str(p, "password"));
-        AddString(server, "udp_relay_mode", Str(p, "udpRelayMode"));
-
-        var tls = new JsonObject { ["sni"] = Str(p, "sni") ?? node.Address! };
+        var tls = new JsonObject { ["serverName"] = Str(p, "sni") ?? node.Address! };
         if (GetAlpn(p) is { } alpn)
         {
             tls["alpn"] = alpn;
         }
-        if (BoolParam(p, "allowInsecure") ?? false)
-        {
-            tls["insecure"] = true;
-        }
-
-        var settings = new JsonObject
-        {
-            ["servers"] = new JsonArray { (JsonNode?)server },
-            ["tls"] = tls,
-        };
 
         return new JsonObject
         {
             ["tag"] = "proxy",
-            ["protocol"] = "tuic",
+            ["protocol"] = "hysteria",
             ["settings"] = settings,
+            ["streamSettings"] = new JsonObject
+            {
+                ["network"] = "hysteria",
+                ["security"] = "tls",
+                ["tlsSettings"] = tls,
+            },
         };
     }
 
@@ -359,7 +333,10 @@ public static class XrayConfigBuilder
             network = "tcp";
         }
 
-        var isTls = string.Equals(Str(p, "security"), "tls", StringComparison.Ordinal);
+        // An explicit tls boolean (Clash import) forces TLS even when the
+        // security field carries the vmess cipher (e.g. "auto").
+        var isTls = string.Equals(Str(p, "security"), "tls", StringComparison.Ordinal)
+                    || (BoolParam(p, "tls") ?? false);
         var stream = new JsonObject { ["network"] = network, ["security"] = isTls ? "tls" : "none" };
 
         if (isTls)
@@ -396,13 +373,11 @@ public static class XrayConfigBuilder
     /// <summary>Builds tlsSettings (serverName, fingerprint, allowInsecure, alpn).</summary>
     private static JsonObject BuildTlsSettings(Dictionary<string, JsonNode> p, string? serverName)
     {
+        // allowInsecure is not emitted: the bundled engine removed it
+        // (migrated to pinnedPeerCertSha256) and rejects configs carrying it.
         var tls = new JsonObject();
         AddString(tls, "serverName", serverName);
         AddString(tls, "fingerprint", Str(p, "fingerprint"));
-        if (BoolParam(p, "allowInsecure") ?? false)
-        {
-            tls["allowInsecure"] = true;
-        }
         if (GetAlpn(p) is { } alpn)
         {
             tls["alpn"] = alpn;

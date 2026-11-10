@@ -224,6 +224,40 @@ public class NodeLinkParserTests
     }
 
     [Fact]
+    public void Parse_Hysteria2Link_AuthOptional_ParsesWithoutPassword()
+    {
+        // The official share-URI form allows omitting the auth userinfo.
+        var node = Single("hysteria2://example.com:8443#Authless");
+
+        Assert.Equal("hysteria2", node.Type);
+        Assert.Equal("example.com", node.Address);
+        Assert.Equal(8443, node.Port);
+        Assert.False(node.ExtraParams?.ContainsKey("password") ?? true);
+    }
+
+    [Fact]
+    public void Parse_Hysteria2Link_PortOmitted_DefaultsTo443()
+    {
+        var withAuth = Single("hysteria2://authpass@example.com#Default");
+
+        Assert.Equal("example.com", withAuth.Address);
+        Assert.Equal(443, withAuth.Port);
+        System.Text.Json.Nodes.JsonNode? pw = null;
+        Assert.True(withAuth.ExtraParams?.TryGetValue("password", out pw) ?? false);
+        Assert.Contains("authpass", pw?.ToJsonString());
+    }
+
+    [Fact]
+    public void Parse_VlessLink_Spx_MapsToSpiderX()
+    {
+        var raw = $"vless://{Uuid}@example.com:443?security=reality&pbk=pubkey123&sid=ab12&spx=%2FspiderX#R";
+        var node = Single(raw);
+
+        Assert.Equal("pubkey123", node.ExtraParams?["publicKey"]?.ToJsonString().Trim('"'));
+        Assert.Equal("/spiderX", node.ExtraParams?["spiderX"]?.ToJsonString().Trim('"'));
+    }
+
+    [Fact]
     public void Parse_MalformedLinkPerProtocol_AllSkipped()
     {
         // Arrange: one malformed link per protocol (plus garbage and bad schemes).
@@ -234,7 +268,7 @@ public class NodeLinkParserTests
             $"vmess://{NotJson}",                                           // base64 of non-JSON
             "vless://example.com:443?encryption=none#X",                    // missing uuid
             "trojan://@example.com:443#X",                                  // empty password
-            "hysteria2://auth@example.com#X",                               // missing port
+            "hysteria2://@:443#X",                                          // empty host
             "tuic://example.com:7777#X",                                    // missing uuid:password
             "socks5://user:pass@example.com:1080#X",                        // unsupported scheme
             "just some random text",                                        // not a link at all

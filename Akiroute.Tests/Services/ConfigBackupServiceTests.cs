@@ -150,6 +150,37 @@ public class ConfigBackupServiceTests : IDisposable
         Assert.Equal("https://example.com/sub", restored.Subscriptions[0].Url);
     }
 
+    // ── Test 1d: Null collections in a backup normalize to empty ─────────
+
+    /// <summary>
+    /// 合法 JSON 但集合为 null 的备份（手改文件）在导入时规范化为空集合，
+    /// 不会让恢复流程在 CopyFrom 中途抛异常而破坏运行中的设置。
+    /// A syntactically valid backup with explicit nulls must import as EMPTY
+    /// collections instead of crashing the restore mid-apply.
+    /// </summary>
+    [Fact]
+    public void Import_NullCollections_NormalizesToEmpty()
+    {
+        // Arrange.
+        Directory.CreateDirectory(_tempDir);
+        File.WriteAllText(BackupPath, "{\"nodes\":null,\"processRules\":null,\"subscriptions\":null}");
+
+        // Act.
+        var restored = ConfigBackupService.ImportFromFile(BackupPath);
+
+        // Assert.
+        Assert.NotNull(restored);
+        Assert.Empty(restored.Nodes);
+        Assert.Empty(restored.ProcessRules);
+        Assert.Empty(restored.Subscriptions);
+
+        // CopyFrom (the restore apply step) must not throw on this shape.
+        var live = new AppSettings();
+        live.Nodes.Add(new ProxyNode { Id = "keep", Name = "n", Address = "a", Port = 1, Type = "ss" });
+        live.CopyFrom(restored);
+        Assert.Empty(live.Nodes);
+    }
+
     // ── Test 2: Invalid JSON returns null ─────────────────────────────────
 
     /// <summary>

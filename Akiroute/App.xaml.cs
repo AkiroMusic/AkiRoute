@@ -265,7 +265,7 @@ public partial class App : Application
                 }
                 catch (Exception ex)
                 {
-                    AppLogger.Warn($"[App] Subscription update threw url={entry.Url}: {ex.Message}");
+                    AppLogger.Warn($"[App] Subscription update threw url={ViewModels.NodeListViewModel.RedactUrlForLog(entry.Url)}: {ex.Message}");
                 }
             }
         }
