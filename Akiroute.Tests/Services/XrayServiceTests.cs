@@ -8,11 +8,12 @@ using Akiroute.Services;
 namespace Akiroute.Tests.Services;
 
 /// <summary>
-/// XrayService tests. Unit tests never touch the real engine. Integration tests
-/// use the source-tree xray.exe (Akiroute\Assets\engine\xray.exe), located by
-/// walking up from the test output dir — the main project's asset None items do
-/// not propagate to the referencing test project — and early-return when the
-/// engine is missing so the suite never hard-fails on machines without assets.
+/// XrayService tests. Unit tests never touch the real engine. Engine
+/// integration tests use the source-tree xray.exe (Akiroute\Assets\engine\xray.exe),
+/// located by walking up from the test output dir — the main project's asset
+/// None items do not propagate to the referencing test project — and are
+/// marked [EngineFact] so a missing engine reports a visible Skipped result
+/// instead of a fake pass (same xUnit 2.x pattern as XrayConfigValidationTests).
 /// Every test disposes the service so no xray process leaks between tests.
 /// </summary>
 public class XrayServiceTests : IDisposable
@@ -117,18 +118,9 @@ public class XrayServiceTests : IDisposable
         Assert.Equal(total, received);
     }
 
-    [Fact]
+    [EngineFact]
     public async Task StartStopAsync_WithRealXray_StartsListensAndStops()
     {
-        if (SourceXrayExe is null)
-        {
-            // Engine integration test NOT RUN: source-tree xray.exe is missing
-            // (run tools/fetch-assets.ps1). Reported loudly so a vacuous green
-            // suite cannot hide the coverage gap.
-            Console.WriteLine("[SKIP] XrayServiceTests: source-tree xray.exe not available — engine integration coverage is NOT running.");
-            return;
-        }
-
         // Arrange: an unreachable outbound (127.0.0.1:1) is fine — xray starts and
         // listens regardless; no internet needed, no traffic flows.
         var preferredPort = FindFreePair(41000);
@@ -164,22 +156,15 @@ public class XrayServiceTests : IDisposable
     [Fact]
     public async Task StartAsync_ConfigDirMissing_ReturnsFalseWithCrashSummary()
     {
-        if (SourceXrayExe is null)
-        {
-            // Engine integration test NOT RUN: source-tree xray.exe is missing
-            // (run tools/fetch-assets.ps1). Reported loudly so a vacuous green
-            // suite cannot hide the coverage gap.
-            Console.WriteLine("[SKIP] XrayServiceTests: source-tree xray.exe not available — engine integration coverage is NOT running.");
-            return;
-        }
-
         // Arrange: the config temp path lives under a directory that does not
         // exist and is never created, so the atomic config write fails
-        // deterministically (no dependence on xray's JSON parser).
+        // deterministically (no dependence on xray's JSON parser). The engine
+        // exe is never reached — the write fails first — so a dummy path
+        // documents the non-dependence and this test runs everywhere.
         var configPath = Path.Combine(_tempDir, "missing-dir", "config.json");
         var freePort = PortFinder.FindFreePort(42000, 28);
         Assert.NotEqual(0, freePort);
-        using var service = NewService(SourceXrayExe, configPath);
+        using var service = NewService(Path.Combine(_tempDir, "never-used-xray.exe"), configPath);
         var states = new ConcurrentQueue<XrayServiceState>();
         service.StateChanged += (_, state) => states.Enqueue(state);
 
@@ -195,18 +180,9 @@ public class XrayServiceTests : IDisposable
         Assert.Contains("Failed to write config", service.LastCrashSummary, StringComparison.Ordinal);
     }
 
-    [Fact]
+    [EngineFact]
     public async Task StartAsync_WritesBuilderOutputToConfigFile()
     {
-        if (SourceXrayExe is null)
-        {
-            // Engine integration test NOT RUN: source-tree xray.exe is missing
-            // (run tools/fetch-assets.ps1). Reported loudly so a vacuous green
-            // suite cannot hide the coverage gap.
-            Console.WriteLine("[SKIP] XrayServiceTests: source-tree xray.exe not available — engine integration coverage is NOT running.");
-            return;
-        }
-
         // Arrange: a real start so the config file is produced and consumed.
         var preferredPort = FindFreePair(41000);
         var configPath = NewConfigPath();

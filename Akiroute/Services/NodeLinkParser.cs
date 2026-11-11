@@ -7,9 +7,10 @@ namespace Akiroute.Services;
 
 /// <summary>
 /// Parses raw proxy subscription text into <see cref="ProxyNode"/> entries.
-/// Supports ss, vmess, vless, trojan, hysteria2 (aliased as "hy2"), and tuic
-/// links, one per whitespace-separated token. Malformed or unsupported links
-/// are skipped — parsing user-supplied input never throws.
+/// Supports ss, vmess, vless, trojan, and hysteria2 (aliased as "hy2") links,
+/// one per whitespace-separated token. Malformed or unsupported links
+/// (including tuic — the bundled engine has no TUIC outbound) are skipped —
+/// parsing user-supplied input never throws.
 /// </summary>
 public static partial class NodeLinkParser
 {

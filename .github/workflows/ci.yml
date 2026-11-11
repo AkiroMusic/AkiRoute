@@ -16,6 +16,12 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Test digest verification (Pester)
+        shell: pwsh
+        run: |
+          if (-not (Get-Module -ListAvailable -Name Pester)) { Install-Module Pester -Force -Scope CurrentUser }
+          Invoke-Pester -Path tools/tests -CI
+
       - name: Fetch xray engine (pinned, digest-verified)
         run: powershell -ExecutionPolicy Bypass -File tools/fetch-assets.ps1 -XrayVersion v26.3.27
 

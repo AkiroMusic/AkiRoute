@@ -44,8 +44,9 @@ public sealed class EngineTheoryAttribute : TheoryAttribute
 ///
 /// The engine asset is gitignored; CI downloads the pinned version via
 /// tools/fetch-assets.ps1 BEFORE running tests, so a missing engine means the
-/// setup itself failed and the test SKIPS loudly (Assert.Skip — a visible
-/// skipped result, never a fake pass).
+/// setup itself failed and the test reports a visible Skipped result via the
+/// <see cref="EngineFactAttribute"/>/<see cref="EngineTheoryAttribute"/> Skip
+/// property — never a fake pass.
 /// </summary>
 public class XrayConfigValidationTests
 {

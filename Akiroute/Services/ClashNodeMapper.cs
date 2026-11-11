@@ -125,6 +125,10 @@ internal static class ClashNodeMapper
 
     private static void MapVmess(YamlMappingNode map, Dictionary<string, JsonNode> extra)
     {
+        // Clash documents "servername" as the vmess TLS SNI; plain "sni" is the
+        // mihomo-dialect alias. An explicit servername wins when both appear.
+        SetString(extra, "sni",
+            YamlMapReader.GetString(map, "servername") ?? YamlMapReader.GetString(map, "sni"));
         SetString(extra, "uuid", YamlMapReader.GetString(map, "uuid"));
 
         if (YamlMapReader.TryGetValue(map, "alterId", out _))

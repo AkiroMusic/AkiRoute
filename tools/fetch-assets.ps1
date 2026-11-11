@@ -43,21 +43,13 @@ if (-not (Test-Path $zip) -or (Get-Item $zip).Length -lt 1000000) {
 }
 
 # --- Integrity verification against the release's published digest file. ---
+# The .dgst sidecar is "ALGO= <hex>" per line, so the SHA2-256 entry must be
+# matched by key — delegated to Verify-XrayDigest.ps1 (unit-tested in
+# tools/tests/), which also deletes the zip and throws on any mismatch.
 Write-Host "Downloading digest file for verification ..."
 Invoke-WebRequest -Uri "$base/Xray-windows-64.zip.dgst" -OutFile $dgst -UseBasicParsing
 
-$actual = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLowerInvariant()
-$published = (Get-Content $dgst) |
-    Where-Object { $_ -match '^[0-9a-fA-F]{64}' } |
-    ForEach-Object { ($_ -split '\s+')[0].ToLowerInvariant() }
-
-if ($published -notcontains $actual) {
-    Remove-Item $zip -Force -ErrorAction SilentlyContinue
-    throw ("SHA256 mismatch: downloaded zip hash {0} is not in the release digest file. " +
-           "The download was deleted; check your network or pin a known release via " +
-           "-XrayVersion.") -f $actual
-}
-Write-Host "SHA256 verified: $actual"
+& (Join-Path $PSScriptRoot 'Verify-XrayDigest.ps1') -ZipPath $zip -DigestPath $dgst
 
 Write-Host 'Extracting ...'
 if (Test-Path $extract) { Remove-Item $extract -Recurse -Force }

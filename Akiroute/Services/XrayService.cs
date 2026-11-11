@@ -311,21 +311,40 @@ public sealed class XrayService : IDisposable
             if (process is not null)
             {
                 TryKill(process);
+                var exited = false;
                 try
                 {
-                    process.WaitForExit(2000);
+                    exited = process.WaitForExit(2000);
                 }
                 catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)
                 {
                     // The process was already reaped; nothing more to wait for.
+                    exited = true;
                 }
 
-                CleanupProcess();
+                exited = exited || HasExitedSafely(process);
+                if (exited)
+                {
+                    CleanupProcess(process);
+                    DeleteConfigTemp();
+                }
+                else
+                {
+                    // Exit unconfirmed: keep the handle AND the credential-bearing
+                    // config — deleting either would strand a possibly live engine
+                    // (no reference for a retry kill, no config to know it ran
+                    // with). The Exited handler reaps the handle if the process
+                    // does exit later; the OS reclaims the rest.
+                    AppLogger.Error($"[XrayService] Dispose: engine exit unconfirmed after kill (pid={GetPidSafely(process)}); handle and temp config kept");
+                }
+            }
+            else
+            {
+                // Remove the credential-bearing config even when no process ran —
+                // it may have been left behind by a failed start.
+                DeleteConfigTemp();
             }
 
-            // Remove the credential-bearing config even when no process ran —
-            // it may have been left behind by a failed start.
-            DeleteConfigTemp();
             IsRunning = false;
         }
         finally
@@ -457,14 +476,14 @@ public sealed class XrayService : IDisposable
         {
             if (!process.Start())
             {
-                CleanupProcess();
+                CleanupProcess(process);
                 SetFailed("Failed to start xray process", 0);
                 return false;
             }
         }
         catch (Exception ex) when (ex is InvalidOperationException or Win32Exception)
         {
-            CleanupProcess();
+            CleanupProcess(process);
             SetFailed($"Failed to start xray process: {ex.Message}", 0);
             return false;
         }
@@ -495,37 +514,81 @@ public sealed class XrayService : IDisposable
                 }
             }
 
-            if (!HasExitedSafely(process))
+            // Kill and reap with BOUNDED waits — TryKill is best-effort, so an
+            // unkillable engine must not hang StartAsync forever. When the exit
+            // cannot be confirmed, keep the process handle AND the config: the
+            // engine may still be alive, and a later Stop/Dispose must be able
+            // to retry the kill through the same handle.
+            var confirmed = HasExitedSafely(process);
+            if (!confirmed)
             {
                 TryKill(process);
-                await WaitForExitQuietlyAsync(process).ConfigureAwait(false);
+                confirmed = await WaitForExitBoundedAsync(process, TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+                if (!confirmed && !HasExitedSafely(process))
+                {
+                    TryKill(process);
+                    confirmed = await WaitForExitBoundedAsync(process, TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+                    confirmed = confirmed || HasExitedSafely(process);
+                }
             }
 
-            // The engine never became ready — drop the credential-bearing
-            // config and release the process object (OnProcessExited also
-            // cleans up when its event fires; double-dispose is harmless).
-            DeleteConfigTemp();
-            CleanupProcess();
-
-            if (cancelled)
+            if (confirmed)
             {
+                // The engine never became ready — drop the credential-bearing
+                // config and release the process object (OnProcessExited also
+                // cleans up when its event fires; instance-scoped cleanup makes
+                // the second call a no-op).
+                DeleteConfigTemp();
+                CleanupProcess(process);
+
+                if (cancelled)
+                {
+                    IsRunning = false;
+                    SetState(XrayServiceState.Stopped);
+                }
+                else if (string.IsNullOrEmpty(LastCrashSummary))
+                {
+                    // The Exited handler extracts the real tail-20 when it fires;
+                    // this generic message covers the process-still-alive case.
+                    LastCrashSummary = "xray did not become ready within the timeout";
+                    SetState(XrayServiceState.Failed);
+                }
+            }
+            else
+            {
+                // Never claim Stopped while the engine may still be running.
                 IsRunning = false;
-                SetState(XrayServiceState.Stopped);
-            }
-            else if (string.IsNullOrEmpty(LastCrashSummary))
-            {
-                // The Exited handler extracts the real tail-20 when it fires;
-                // this generic message covers the process-still-alive case.
-                LastCrashSummary = "xray did not become ready within the timeout";
+                LastCrashSummary = "xray did not exit after a failed start";
+                AppLogger.Warn($"[XrayService] Failed-start cleanup unconfirmed; engine kept for retry (pid={GetPidSafely(process)})");
                 SetState(XrayServiceState.Failed);
             }
 
             return false;
         }
 
-        LocalPort = localPort;
-        IsRunning = true;
-        LastCrashSummary = null;
+        // Final commit under the gate: only THIS run's process — still the
+        // registered reference and still alive at commit time — may publish
+        // Running. Otherwise the process exited right after readiness, and
+        // OnProcessExited owns the outcome (crash summary + Failed); letting
+        // Start overwrite that would leave the UI showing Running for a dead
+        // engine.
+        bool running;
+        lock (_gate)
+        {
+            running = ReferenceEquals(_process, process) && !HasExitedSafely(process);
+            if (running)
+            {
+                IsRunning = true;
+                LastCrashSummary = null;
+                LocalPort = localPort;
+            }
+        }
+
+        if (!running)
+        {
+            return false;
+        }
+
         SetState(XrayServiceState.Running);
         return true;
     }
@@ -565,7 +628,7 @@ public sealed class XrayService : IDisposable
 
         if (exited)
         {
-            CleanupProcess();
+            CleanupProcess(process);
             DeleteConfigTemp();
             IsRunning = false;
             LocalPort = 0;
@@ -637,17 +700,6 @@ public sealed class XrayService : IDisposable
         }
     }
 
-    private static async Task WaitForExitQuietlyAsync(Process process)
-    {
-        try
-        {
-            await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)
-        {
-        }
-    }
-
     /// <summary>
     /// Polls the process for up to <see cref="ReadinessTimeoutMs"/>: the probe
     /// succeeds as soon as a TCP connect to the SOCKS inbound succeeds, and fails
@@ -715,10 +767,8 @@ public sealed class XrayService : IDisposable
             return;
         }
 
-        bool wasStopping;
         lock (_gate)
         {
-            wasStopping = _stopping;
             if (!ReferenceEquals(_process, process))
             {
                 // An older process exited after a newer one was started; ignore it.
@@ -736,15 +786,26 @@ public sealed class XrayService : IDisposable
         }
 
         var exitCode = ReadExitCode(process);
+        bool wasStopping;
         lock (_gate)
         {
+            // Re-check identity AFTER the wait: Stop may have reaped this
+            // process and a newer Start registered a different one meanwhile —
+            // this callback must then not touch the new run's state.
+            if (!ReferenceEquals(_process, process))
+            {
+                return;
+            }
+            // Read the stop intent at commit time: a stop that began while
+            // draining the output counts as a clean stop.
+            wasStopping = _stopping;
             ExitCode = exitCode;
             IsRunning = false;
         }
 
         if (wasStopping)
         {
-            CleanupProcess();
+            CleanupProcess(process);
             SetState(XrayServiceState.Stopped);
         }
         else
@@ -754,7 +815,7 @@ public sealed class XrayService : IDisposable
                 ? $"xray exited unexpectedly (code {exitCode})"
                 : tail;
             AppLogger.Error($"xray crashed (code {exitCode}): {LastCrashSummary}");
-            CleanupProcess();
+            CleanupProcess(process);
             SetState(XrayServiceState.Failed);
         }
     }
@@ -843,12 +904,22 @@ public sealed class XrayService : IDisposable
         }
     }
 
-    /// <summary>Disposes the process object and drops the reference, if any.</summary>
-    private void CleanupProcess()
+    /// <summary>
+    /// Disposes the process object and drops the reference — but ONLY when the
+    /// stored reference is still <paramref name="expected"/>. Instance-scoped
+    /// cleanup: a stale Exited callback from a previous process must never
+    /// reap the current run's process (which a newer StartAsync has since
+    /// registered).
+    /// </summary>
+    private void CleanupProcess(Process? expected)
     {
         Process? process;
         lock (_gate)
         {
+            if (!ReferenceEquals(_process, expected))
+            {
+                return;
+            }
             process = _process;
             _process = null;
         }

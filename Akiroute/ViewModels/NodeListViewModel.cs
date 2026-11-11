@@ -329,7 +329,8 @@ public partial class NodeListViewModel : ObservableObject
     /// Imports nodes from pasted text — either link tokens (parsed via
     /// <see cref="NodeLinkParser"/>) or a Clash YAML document (parsed via
     /// <see cref="ClashConfigParser"/> as a fallback). New nodes are appended
-    /// (deduped by type/address/port) and <see cref="NodesImported"/> is raised when
+    /// (deduped by full configuration fingerprint — the same endpoint with
+    /// different credentials coexists) and <see cref="NodesImported"/> is raised when
     /// at least one node was added.
     /// </summary>
     /// <param name="text">Raw link text or Clash YAML to import.</param>

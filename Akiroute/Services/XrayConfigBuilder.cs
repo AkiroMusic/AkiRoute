@@ -22,7 +22,7 @@ public static class XrayConfigBuilder
     /// </summary>
     /// <param name="node">The selected proxy node. Must have a non-empty
     /// <c>Address</c> and a port in the range 1-65535; protocols that require a
-    /// uuid (vless, vmess, tuic) must carry it in <c>ExtraParams["uuid"]</c>.</param>
+    /// uuid (vless, vmess) must carry it in <c>ExtraParams["uuid"]</c>.</param>
     /// <param name="processRules">Per-process routing rules. Rules with a null or
     /// blank <c>ProcessName</c> are skipped.</param>
     /// <param name="localPort">Loopback port for the SOCKS inbound; the HTTP
@@ -30,7 +30,8 @@ public static class XrayConfigBuilder
     /// <param name="mode">Routing mode deciding the catch-all outbound tag.</param>
     /// <returns>A <see cref="JsonObject"/> directly serializable to the config file.</returns>
     /// <exception cref="ArgumentException">The node is null, missing its address,
-    /// has an out-of-range port, or is missing a protocol-required uuid.</exception>
+    /// has an out-of-range port, is missing a protocol-required uuid, or uses a
+    /// protocol the bundled engine has no outbound for (TUIC).</exception>
     public static JsonObject Build(ProxyNode node, IReadOnlyList<ProcessRule> processRules, int localPort, ProxyMode mode)
     {
         ArgumentNullException.ThrowIfNull(processRules);

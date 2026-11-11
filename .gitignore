@@ -16,6 +16,7 @@ Akiroute/Assets/rules/
 # Internal dev tooling / state (not part of the deliverable)
 .omo/
 .zcode/
+.mimosa/
 Reference-XrayUI/
 Reference-HexagonProxy/
 Akiroute-Plan.md
@@ -23,6 +24,9 @@ Akiroute-Plan.md
 # Local tooling
 tools/*.zip
 tools/*.tmp
+
+# Test runner artifacts
+testResults.xml
 
 # OS
 Thumbs.db

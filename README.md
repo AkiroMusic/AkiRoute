@@ -206,8 +206,9 @@ Akiroute/
 │   ├── Services/             # XrayService, NodeLinkParser, PingService...
 │   ├── ViewModels/           # MainWindowViewModel, NodeListViewModel...
 │   └── Views/                # MainWindow, dialogs, controls
-├── Akiroute.Tests/           # xUnit test suite (246 tests)
+├── Akiroute.Tests/           # xUnit test suite (282 tests)
 ├── tools/fetch-assets.ps1    # Engine asset downloader
+├── tools/Verify-XrayDigest.ps1 # Release digest-sidecar verifier (SHA2-256)
 └── LICENSE
 ```
 
@@ -424,8 +425,9 @@ Akiroute/
 │   ├── Services/             # XrayService、NodeLinkParser、PingService...
 │   ├── ViewModels/           # MainWindowViewModel、NodeListViewModel...
 │   └── Views/                # MainWindow、对话框、控件
-├── Akiroute.Tests/           # xUnit 测试套件（246 个测试）
+├── Akiroute.Tests/           # xUnit 测试套件（282 个测试）
 ├── tools/fetch-assets.ps1    # 引擎资源下载器
+├── tools/Verify-XrayDigest.ps1 # 发布 digest 校验器（SHA2-256）
 └── LICENSE
 ```
 
