@@ -1,4 +1,4 @@
-# Akiroute
+# AkiRoute
 
 [![Website](https://img.shields.io/badge/site-akiromusic.github.io-6D82FF)](https://akiromusic.github.io/AkiRoute/)
 [![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
@@ -236,7 +236,7 @@ risk and responsibility.
 
 ---
 
-# Akiroute（Windows 本地代理路由工具）
+# AkiRoute（Windows 本地代理路由工具）
 
 [![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-blue.svg)]()
